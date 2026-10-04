@@ -196,29 +196,49 @@ private:
     void PollTouchpad() {
         static bool was_touched = false;
         static int64_t touch_start_time = 0;
-        const int64_t TOUCH_THRESHOLD_MS = 500;  // 触摸时长阈值，超过500ms视为长按
-        
+        static int start_x = 0;
+        static int start_y = 0;
+        static int last_x = 0;
+        static int last_y = 0;
+        const int64_t TOUCH_THRESHOLD_MS = 500;
+        const int SWIPE_THRESHOLD_PX = 28;
+
         ft6336_->UpdateTouchPoint();
         auto& touch_point = ft6336_->GetTouchPoint();
-        
-        // 检测触摸开始
+
         if (touch_point.num > 0 && !was_touched) {
             was_touched = true;
-            touch_start_time = esp_timer_get_time() / 1000; // 转换为毫秒
-        } 
-        // 检测触摸释放
-        else if (touch_point.num == 0 && was_touched) {
+            touch_start_time = esp_timer_get_time() / 1000;
+            start_x = last_x = touch_point.x;
+            start_y = last_y = touch_point.y;
+        } else if (touch_point.num > 0 && was_touched) {
+            last_x = touch_point.x;
+            last_y = touch_point.y;
+        } else if (touch_point.num == 0 && was_touched) {
             was_touched = false;
             int64_t touch_duration = (esp_timer_get_time() / 1000) - touch_start_time;
-            
-            // 只有短触才触发
+            int dx = last_x - start_x;
+            int dy = last_y - start_y;
+            int abs_dx = dx < 0 ? -dx : dx;
+            int abs_dy = dy < 0 ? -dy : dy;
+
+            // Vertical swipe replaces the Watcher rotary encoder.
+            if (abs_dy >= SWIPE_THRESHOLD_PX && abs_dy > abs_dx && touch_duration < 1500) {
+                display_->OnVerticalSwipe(dy > 0);
+                return;
+            }
+
             if (touch_duration < TOUCH_THRESHOLD_MS) {
                 auto& app = Application::GetInstance();
                 if (app.GetDeviceState() == kDeviceStateStarting) {
                     EnterWifiConfigMode();
                     return;
                 }
-                app.ToggleChatState();
+                // Tap in the icon column selects that item; a tap elsewhere is the wheel click.
+                // Unhandled taps keep the previous chat toggle.
+                if (display_ == nullptr || !display_->OnTap(start_x, start_y)) {
+                    app.ToggleChatState();
+                }
             }
         }
     }
