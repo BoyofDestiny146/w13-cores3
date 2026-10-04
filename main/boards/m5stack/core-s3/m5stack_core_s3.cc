@@ -1,5 +1,6 @@
 #include "wifi_board.h"
 #include "cores3_audio_codec.h"
+#include "codecs/es8388_audio_codec.h"
 #include "display/lcd_display.h"
 #include "application.h"
 #include "config.h"
@@ -344,17 +345,19 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static CoreS3AudioCodec audio_codec(i2c_bus_,
+        static Es8388AudioCodec audio_codec(
+            i2c_bus_,
+            I2C_NUM_1,
             AUDIO_INPUT_SAMPLE_RATE,
             AUDIO_OUTPUT_SAMPLE_RATE,
-            AUDIO_I2S_GPIO_MCLK,
-            AUDIO_I2S_GPIO_BCLK,
-            AUDIO_I2S_GPIO_WS,
-            AUDIO_I2S_GPIO_DOUT,
-            AUDIO_I2S_GPIO_DIN,
-            AUDIO_CODEC_AW88298_ADDR,
-            AUDIO_CODEC_ES7210_ADDR,
-            AUDIO_INPUT_REFERENCE);
+            M144_AUDIO_I2S_GPIO_MCLK,
+            M144_AUDIO_I2S_GPIO_BCLK,
+            M144_AUDIO_I2S_GPIO_WS,
+            M144_AUDIO_I2S_GPIO_DOUT,
+            M144_AUDIO_I2S_GPIO_DIN,
+            M144_AUDIO_PA_PIN,
+            M144_AUDIO_CODEC_ADDR,
+            false);
         return &audio_codec;
     }
 
