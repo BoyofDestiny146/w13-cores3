@@ -1,7 +1,7 @@
 #include "wifi_board.h"
 #include "cores3_audio_codec.h"
 #include "codecs/es8388_audio_codec.h"
-#include "display/lcd_display.h"
+#include "cores3_v4_display.h"
 #include "application.h"
 #include "config.h"
 #include "power_save_timer.h"
@@ -123,7 +123,7 @@ private:
     Pmic* pmic_;
     Aw9523* aw9523_;
     Ft6336* ft6336_;
-    LcdDisplay* display_;
+    CoreS3V4Display* display_;
     EspVideo* camera_;
     esp_timer_handle_t touchpad_timer_;
     PowerSaveTimer* power_save_timer_;
@@ -286,8 +286,9 @@ private:
         esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
 
-        display_ = new SpiLcdDisplay(panel_io, panel,
-                                    DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+        display_ = new CoreS3V4Display(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                       DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
+                                       DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
 
      void InitializeCamera() {
