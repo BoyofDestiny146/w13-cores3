@@ -107,6 +107,7 @@ void CoreS3V4Display::HideAllContent() {
     Hide(icon_wifi_);
     Hide(ready_check_);
     Hide(emoji_box_);
+    ShowHudFrame(false);
 }
 
 void CoreS3V4Display::ShowV4Layer() {
@@ -122,13 +123,80 @@ void CoreS3V4Display::ShowV4Layer() {
     }
 }
 
+void CoreS3V4Display::CreateHudFrame() {
+    if (v4_layer_ == nullptr || hud_frame_ != nullptr) {
+        return;
+    }
+
+    hud_frame_ = lv_obj_create(v4_layer_);
+    lv_obj_remove_style_all(hud_frame_);
+    lv_obj_set_pos(hud_frame_, 0, 0);
+    lv_obj_set_size(hud_frame_, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_opa(hud_frame_, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(hud_frame_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(hud_frame_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(hud_frame_, LV_OBJ_FLAG_HIDDEN);
+
+    const int L = kFrameLeft;
+    const int T = kFrameTop;
+    const int R = kFrameRight;
+    const int B = kFrameBottom;
+    const int C = kFrameCorner;
+
+    // Eight corner arms — deliberate gaps between them (HUD / segmented outline).
+    // 0-1 top-left, 2-3 top-right, 4-5 bottom-left, 6-7 bottom-right.
+    frame_pts_[0][0] = {L, T};
+    frame_pts_[0][1] = {L + C, T};
+    frame_pts_[1][0] = {L, T};
+    frame_pts_[1][1] = {L, T + C};
+
+    frame_pts_[2][0] = {R - C, T};
+    frame_pts_[2][1] = {R, T};
+    frame_pts_[3][0] = {R, T};
+    frame_pts_[3][1] = {R, T + C};
+
+    frame_pts_[4][0] = {L, B - C};
+    frame_pts_[4][1] = {L, B};
+    frame_pts_[5][0] = {L, B};
+    frame_pts_[5][1] = {L + C, B};
+
+    frame_pts_[6][0] = {R, B - C};
+    frame_pts_[6][1] = {R, B};
+    frame_pts_[7][0] = {R - C, B};
+    frame_pts_[7][1] = {R, B};
+
+    for (int i = 0; i < kFrameSegCount; ++i) {
+        frame_lines_[i] = lv_line_create(hud_frame_);
+        lv_line_set_points(frame_lines_[i], frame_pts_[i], 2);
+        lv_obj_set_style_line_width(frame_lines_[i], kFrameLineW, 0);
+        lv_obj_set_style_line_color(frame_lines_[i], lv_color_hex(kLime), 0);
+        lv_obj_set_style_line_rounded(frame_lines_[i], true, 0);
+        lv_obj_set_style_line_opa(frame_lines_[i], LV_OPA_COVER, 0);
+        lv_obj_remove_flag(frame_lines_[i], LV_OBJ_FLAG_CLICKABLE);
+    }
+}
+
+void CoreS3V4Display::ShowHudFrame(bool visible) {
+    if (hud_frame_ == nullptr) {
+        return;
+    }
+    if (visible) {
+        Show(hud_frame_);
+        // Keep frame behind labels/icons so content is readable.
+        lv_obj_move_to_index(hud_frame_, 0);
+    } else {
+        Hide(hud_frame_);
+    }
+}
+
 void CoreS3V4Display::ApplyMenuSelectionVisuals() {
     auto style = [](lv_obj_t* icon, bool selected) {
         if (icon == nullptr) {
             return;
         }
-        lv_obj_set_style_text_color(icon, lv_color_hex(kLime), 0);
-        lv_obj_set_style_text_opa(icon, selected ? LV_OPA_COVER : LV_OPA_40, 0);
+        // Default: muted gray. Selected: bright white (lime reserved for HUD frame).
+        lv_obj_set_style_text_color(icon, lv_color_hex(selected ? kIconSelected : kIconMuted), 0);
+        lv_obj_set_style_text_opa(icon, selected ? LV_OPA_COVER : LV_OPA_70, 0);
     };
     style(icon_talk_, menu_selected_ == MenuItem::Talk);
     style(icon_task_, menu_selected_ == MenuItem::Tasks);
@@ -223,6 +291,7 @@ void CoreS3V4Display::ShowOverlayText(const char* title, const char* subtitle, c
     Hide(qr_image_);
     Hide(icon_label_);
     ShowStatusRow(false);
+    ShowHudFrame(true);
 
     auto set_line = [&](lv_obj_t* label, const char* text, int y) {
         if (label == nullptr) {
@@ -571,6 +640,7 @@ void CoreS3V4Display::ShowMainScreen() {
     EnterBrowseMode();
     ShowV4Layer();
     HideAllContent();
+    ShowHudFrame(true);
     ShowStatusRow(true);
     if (nexus_logo_ != nullptr) {
         lv_label_set_text(nexus_logo_, "NEXUS");
@@ -593,10 +663,12 @@ void CoreS3V4Display::ShowListeningScreen() {
     }
     ShowV4Layer();
     if (keep_modal) {
+        ShowHudFrame(true);
         ApplyMenuSelectionVisuals();
         return;
     }
     HideAllContent();
+    ShowHudFrame(true);
     ShowStatusRow(true);
     if (listening_label_ != nullptr) {
         lv_label_set_text(listening_label_, "Listening");
@@ -627,10 +699,12 @@ void CoreS3V4Display::ShowSpeakingScreen() {
     }
     ShowV4Layer();
     if (keep_modal) {
+        ShowHudFrame(true);
         ApplyMenuSelectionVisuals();
         return;
     }
     HideAllContent();
+    ShowHudFrame(true);
     ShowStatusRow(true);
     if (listening_label_ != nullptr) {
         lv_label_set_text(listening_label_, "Speaking");
@@ -919,10 +993,10 @@ void CoreS3V4Display::SetupUI() {
 
     nexus_logo_ = MakeLabel(v4_layer_, text_font, 0xFFFFFF);
     listening_label_ = MakeLabel(v4_layer_, text_font, 0xFFB300);
-    icon_talk_ = MakeLabel(v4_layer_, icon_font, kLime);
-    icon_task_ = MakeLabel(v4_layer_, icon_font, kLime);
-    icon_volume_ = MakeLabel(v4_layer_, icon_font, kLime);
-    icon_wifi_ = MakeLabel(v4_layer_, icon_font, kLime);
+    icon_talk_ = MakeLabel(v4_layer_, icon_font, kIconMuted);
+    icon_task_ = MakeLabel(v4_layer_, icon_font, kIconMuted);
+    icon_volume_ = MakeLabel(v4_layer_, icon_font, kIconMuted);
+    icon_wifi_ = MakeLabel(v4_layer_, icon_font, kIconMuted);
     lv_label_set_text(icon_talk_, MATERIAL_SYMBOLS_CHAT_BUBBLE);
     lv_label_set_text(icon_task_, MATERIAL_SYMBOLS_CALENDAR_MONTH);
     lv_label_set_text(icon_volume_, MATERIAL_SYMBOLS_VOLUME_UP);
@@ -932,6 +1006,8 @@ void CoreS3V4Display::SetupUI() {
     PlaceCenter(icon_volume_, kIconCenterX, 150);
     PlaceCenter(icon_wifi_, kIconCenterX, 210);
 
+    CreateHudFrame();
+
     esp_timer_create_args_t ready_args = {};
     ready_args.callback = ReadySplashTimerCallback;
     ready_args.arg = this;
@@ -940,7 +1016,7 @@ void CoreS3V4Display::SetupUI() {
     ESP_ERROR_CHECK(esp_timer_create(&ready_args, &ready_timer_));
 
     ShowBootInitializingScreen();
-    ESP_LOGI(TAG, "V4 UI on 320x240 — swipe selects, tap activates");
+    ESP_LOGI(TAG, "V4 UI on 320x240 — segmented HUD frame, muted menu icons");
 }
 
 void CoreS3V4Display::SetTheme(Theme* theme) {

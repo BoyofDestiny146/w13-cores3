@@ -60,6 +60,8 @@ private:
     };
 
     static constexpr uint32_t kLime = 0x7CFF14;
+    static constexpr uint32_t kIconMuted = 0x8B8B8B;
+    static constexpr uint32_t kIconSelected = 0xFFFFFF;
     static constexpr int kIconColumnX = 268;
     static constexpr int kIconCenterX = 294;
     static constexpr int kRowHeight = 60;
@@ -67,6 +69,14 @@ private:
     static constexpr int kVolumeStep = 5;
     static constexpr int kReadySplashUs = 4000000;
     static constexpr int64_t kSwipeDebounceUs = 120000;
+    // HUD frame in the content pane (left of icon column, below status row).
+    static constexpr int kFrameLeft = 26;
+    static constexpr int kFrameTop = 40;
+    static constexpr int kFrameRight = 246;
+    static constexpr int kFrameBottom = 220;
+    static constexpr int kFrameCorner = 28;
+    static constexpr int kFrameLineW = 2;
+    static constexpr int kFrameSegCount = 8;
     // Change Wi-Fi overlay lines (ShowOverlayText centers): No @ y=130, Yes @ y=168.
     static constexpr int kWifiConfirmNoCenterY = 130;
     static constexpr int kWifiConfirmYesCenterY = 168;
@@ -91,6 +101,9 @@ private:
     lv_obj_t* icon_volume_ = nullptr;
     lv_obj_t* icon_wifi_ = nullptr;
     lv_obj_t* ready_check_ = nullptr;
+    lv_obj_t* hud_frame_ = nullptr;
+    lv_obj_t* frame_lines_[kFrameSegCount] = {};
+    lv_point_precise_t frame_pts_[kFrameSegCount][2] = {};
 
     esp_timer_handle_t ready_timer_ = nullptr;
     bool binding_ui_shown_ = false;
@@ -111,6 +124,8 @@ private:
     void Show(lv_obj_t* obj);
     void HideAllContent();
     void ShowV4Layer();
+    void CreateHudFrame();
+    void ShowHudFrame(bool visible);
     void ApplyMenuSelectionVisuals();
     void RefreshStatusRow();
     void ShowStatusRow(bool visible);
