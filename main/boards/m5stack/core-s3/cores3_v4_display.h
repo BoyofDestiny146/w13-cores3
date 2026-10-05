@@ -67,6 +67,13 @@ private:
     static constexpr int kVolumeStep = 5;
     static constexpr int kReadySplashUs = 4000000;
     static constexpr int64_t kSwipeDebounceUs = 120000;
+    // Change Wi-Fi overlay lines (ShowOverlayText centers): No @ y=130, Yes @ y=168.
+    static constexpr int kWifiConfirmNoCenterY = 130;
+    static constexpr int kWifiConfirmYesCenterY = 168;
+    // Split midway between No and Yes centers so each option has a direct hit band.
+    static constexpr int kWifiConfirmSplitY = (kWifiConfirmNoCenterY + kWifiConfirmYesCenterY) / 2;  // 149
+    static constexpr int kWifiConfirmNoTopY = 110;
+    static constexpr int kWifiConfirmYesBottomY = 190;
 
     lv_obj_t* v4_layer_ = nullptr;
     lv_obj_t* title_label_ = nullptr;

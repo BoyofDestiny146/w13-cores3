@@ -809,7 +809,42 @@ bool CoreS3V4Display::OnTap(int x, int y) {
                 ESP_LOGI(TAG, "Tasks placeholder exit");
                 ReturnFromOverlay();
                 return true;
-            case MenuMode::WifiConfirm:
+            case MenuMode::WifiConfirm: {
+                // Direct Yes/No hit bands around the overlay labels (320x240).
+                // First tap on an option selects it; second tap on the same option
+                // activates (matches swipe-to-highlight + tap-to-activate).
+                const bool hit_no =
+                    y >= kWifiConfirmNoTopY && y < kWifiConfirmSplitY;
+                const bool hit_yes =
+                    y >= kWifiConfirmSplitY && y <= kWifiConfirmYesBottomY;
+                ESP_LOGI(TAG,
+                         "Change Wi-Fi confirm tap x=%d y=%d hit_no=%d hit_yes=%d "
+                         "selected=%s",
+                         x, y, hit_no ? 1 : 0, hit_yes ? 1 : 0,
+                         wifi_confirm_yes_ ? "Yes" : "No");
+
+                if (hit_no) {
+                    if (wifi_confirm_yes_) {
+                        wifi_confirm_yes_ = false;
+                        ApplyWifiConfirmOptionVisuals();
+                        ESP_LOGI(TAG, "Change Wi-Fi confirm selected: No");
+                        return true;
+                    }
+                    ESP_LOGI(TAG, "Change Wi-Fi confirmation: No — cancelled");
+                    ReturnFromOverlay();
+                    return true;
+                }
+                if (hit_yes) {
+                    if (!wifi_confirm_yes_) {
+                        wifi_confirm_yes_ = true;
+                        ApplyWifiConfirmOptionVisuals();
+                        ESP_LOGI(TAG, "Change Wi-Fi confirm selected: Yes");
+                        return true;
+                    }
+                    clear_wifi_and_reboot = true;
+                    break;
+                }
+                // Tap outside Yes/No bands: activate the current highlight.
                 if (wifi_confirm_yes_) {
                     clear_wifi_and_reboot = true;
                     break;
@@ -817,6 +852,7 @@ bool CoreS3V4Display::OnTap(int x, int y) {
                 ESP_LOGI(TAG, "Change Wi-Fi confirmation: No — cancelled");
                 ReturnFromOverlay();
                 return true;
+            }
             case MenuMode::Inactive:
             default:
                 return false;
