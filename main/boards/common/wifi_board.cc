@@ -54,7 +54,12 @@ void WifiBoard::StartNetwork() {
     // Initialize WiFi manager
     WifiManagerConfig config;
     config.ssid_prefix = "Nexus-1984";
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+    // CoreS3 W-13: open the captive portal in English regardless of display locale.
+    config.language = "en-US";
+#else
     config.language = Lang::CODE;
+#endif
     config.show_ota_config = true;
     config.show_sleep_config = true;
 

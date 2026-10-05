@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Network Configuration</title>
+    <title>NEXUS DEVICE SETUP</title>
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="referrer no-referrer">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -84,6 +84,29 @@
             box-shadow: var(--shadow);
         }
         .app-header .logo svg { width: 19px; height: 19px; }
+        .app-header .brand {
+            flex: 1;
+            min-width: 0;
+        }
+        .app-header .brand-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: var(--text);
+            line-height: 1.2;
+        }
+        .app-header .brand-sub {
+            margin: 2px 0 0;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+        .setup-lead {
+            margin: 0 4px 14px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
 
         /* ========== Card ========== */
         .card {
@@ -454,6 +477,10 @@
                 <line x1="12" y1="20" x2="12.01" y2="20"/>
             </svg>
         </span>
+        <div class="brand">
+            <p class="brand-title" data-lang="title">NEXUS DEVICE SETUP</p>
+            <p class="brand-sub" data-lang="brand">Warehouse 13 / Nexus</p>
+        </div>
         <!-- Language switcher -->
         <div class="language-switch">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -469,7 +496,7 @@
             <option value="da-DK">Dansk</option>
             <option value="de-DE">Deutsch</option>
             <option value="el-GR">Ελληνικά</option>
-            <option value="en-US">English</option>
+            <option value="en-US" selected>English</option>
             <option value="es-ES">Español</option>
             <option value="fa-IR">فارسی</option>
             <option value="fi-FI">Suomi</option>
@@ -504,10 +531,12 @@
         </div>
     </header>
 
+    <p class="setup-lead" data-lang="subtitle">Connect this device to Wi-Fi</p>
+
     <div class="card">
     <!-- Tabs -->
     <div class="tabs">
-        <div class="tab active" onclick="switchTab('wifi')" data-lang="wifi_tab">Wi-Fi Config</div>
+        <div class="tab active" onclick="switchTab('wifi')" data-lang="wifi_tab">Wi-Fi</div>
         <div class="tab" onclick="switchTab('advanced')" data-lang="advanced_tab">Advanced</div>
     </div>
 
@@ -523,15 +552,15 @@
         
         <!-- New Wi-Fi Connection -->
         <div class="section">
-            <h3 data-lang="new_wifi">New Wi-Fi</h3>
+            <h3 data-lang="new_wifi">Wi-Fi Network</h3>
             <p class="error" id="error"></p>
             <form action="/submit" method="post" onsubmit="submitForm(event)">
                 <p>
-                    <label for="ssid">SSID:</label>
+                    <label for="ssid" data-lang="ssid_label">Wi-Fi Network / SSID</label>
                     <input type="text" id="ssid" name="ssid" required readonly>
                 </p>
                 <p>
-                    <label for="password" data-lang="password">Password:</label>
+                    <label for="password" data-lang="password">Password</label>
                     <input type="password" id="password" name="password">
                 </p>
                 <p>
@@ -745,23 +774,26 @@
                 config_success: 'Η διαμόρφωση ολοκληρώθηκε με επιτυχία!'
             },
             'en-US': {
-                title: 'Network Configuration',
+                title: 'NEXUS DEVICE SETUP',
+                brand: 'Warehouse 13 / Nexus',
+                subtitle: 'Connect this device to Wi-Fi',
                 saved_wifi: 'Saved Wi-Fi',
-                new_wifi: 'New Wi-Fi',
-                password: 'Password:',
+                new_wifi: 'Wi-Fi Network',
+                ssid_label: 'Wi-Fi Network / SSID',
+                password: 'Password',
                 connect: 'Connect',
                 connecting: 'Connecting...',
-                select_wifi: 'Select a 2.4G Wi-Fi from the list below:',
-                select_wifi_5g: 'Select a Wi-Fi from the list below:',
+                select_wifi: 'Select a 2.4G Wi-Fi network from the list below:',
+                select_wifi_5g: 'Select a Wi-Fi network from the list below:',
                 scanning: 'Scanning...',
-                wifi_tab: 'Wi-Fi Config',
+                wifi_tab: 'Wi-Fi',
                 advanced_tab: 'Advanced',
                 ota_url: 'Custom OTA URL:',
                 max_tx_power: 'Wi-Fi Max TX Power:',
                 remember_bssid: 'Remember BSSID when connecting to Wi-Fi',
                 sleep_mode: 'Enable Sleep Mode',
                 save: 'Save',
-                config_success: 'Configuration successful!'
+                config_success: 'Connected. Warehouse 13 / Nexus setup complete.'
             },
             'es-ES': {
                 title: 'Configuración de red',
@@ -1447,18 +1479,22 @@
             }
             
             // Set page title
-            document.title = translations[lang].title;
+            document.title = translations[lang].title || document.title;
             
-            // Update text content
+            // Update text content (skip missing keys so English brand defaults remain)
             document.querySelectorAll('[data-lang]').forEach(element => {
                 const key = element.getAttribute('data-lang');
-                element.textContent = translations[lang][key];
+                if (translations[lang][key]) {
+                    element.textContent = translations[lang][key];
+                }
             });
             
             // Update input values
             document.querySelectorAll('[data-lang-value]').forEach(element => {
                 const key = element.getAttribute('data-lang-value');
-                element.value = translations[lang][key];
+                if (translations[lang][key]) {
+                    element.value = translations[lang][key];
+                }
             });
             
             // Update AP list text based on 5G support

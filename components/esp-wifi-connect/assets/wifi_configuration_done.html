@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WiFi Configuration</title>
+    <title>Warehouse 13 / Nexus</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <style>
@@ -109,7 +109,7 @@
             </svg>
 
             <div class="message">
-                <p class="primary" id="message">Configuration successful!</p>
+                <p class="primary" id="message">Connected. Warehouse 13 / Nexus setup complete.</p>
             </div>
         </div>
     </div>
@@ -117,7 +117,7 @@
     <script>
         window.addEventListener('load', function() {
             const params = new URLSearchParams(window.location.search);
-            const message = params.get('message') || 'Configuration successful!';
+            const message = params.get('message') || 'Connected. Warehouse 13 / Nexus setup complete.';
             document.title = message;
             document.getElementById('message').textContent = message;
 
