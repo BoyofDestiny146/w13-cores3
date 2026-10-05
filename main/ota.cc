@@ -46,12 +46,35 @@ Ota::~Ota() {
 }
 
 std::string Ota::GetCheckVersionUrl() {
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+    // W-13 CoreS3: Nexus OTA is authoritative. Stale wifi/ota_url (e.g. Tenclass)
+    // or an old sdkconfig CONFIG_OTA_URL must not win.
+    static constexpr const char* kNexusOtaUrl =
+        "https://ota.nexus.warehouse-13.biz/xiaozhi/ota/";
+    Settings settings("wifi", true);
+    std::string url = settings.GetString("ota_url");
+    const bool is_nexus = url.find("ota.nexus.warehouse-13.biz") != std::string::npos;
+    const bool is_tenclass = url.find("tenclass") != std::string::npos;
+    if (url.empty() || !is_nexus || is_tenclass) {
+        if (!url.empty() && url != kNexusOtaUrl) {
+            ESP_LOGW(TAG, "Overriding stale OTA URL with Nexus: %s -> %s", url.c_str(),
+                     kNexusOtaUrl);
+            settings.SetString("ota_url", kNexusOtaUrl);
+        } else if (url.empty()) {
+            // Persist so captive-portal Advanced does not reintroduce Tenclass later.
+            settings.SetString("ota_url", kNexusOtaUrl);
+        }
+        return kNexusOtaUrl;
+    }
+    return url;
+#else
     Settings settings("wifi", false);
     std::string url = settings.GetString("ota_url");
     if (url.empty()) {
         url = CONFIG_OTA_URL;
     }
     return url;
+#endif
 }
 
 std::unique_ptr<Http> Ota::SetupHttp() {
@@ -150,6 +173,15 @@ NetworkResult<> Ota::CheckVersion() {
 
     has_mqtt_config_ = false;
     cJSON *mqtt = cJSON_GetObjectItem(root, "mqtt");
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+    // W-13 CoreS3 is WebSocket-only to Nexus. Never persist or honor OTA mqtt.
+    if (cJSON_IsObject(mqtt)) {
+        ESP_LOGW(TAG, "Ignoring OTA mqtt section (W-13 Nexus WebSocket transport)");
+    } else {
+        ESP_LOGI(TAG, "No mqtt section found !");
+    }
+    has_mqtt_config_ = false;
+#else
     if (cJSON_IsObject(mqtt)) {
         Settings settings("mqtt", true);
         cJSON *item = NULL;
@@ -168,6 +200,7 @@ NetworkResult<> Ota::CheckVersion() {
     } else {
         ESP_LOGI(TAG, "No mqtt section found !");
     }
+#endif
 
     has_websocket_config_ = false;
     cJSON *websocket = cJSON_GetObjectItem(root, "websocket");
@@ -188,6 +221,11 @@ NetworkResult<> Ota::CheckVersion() {
         has_websocket_config_ = true;
     } else {
         ESP_LOGI(TAG, "No websocket section found!");
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+        // Still select WebSocket transport even if OTA omitted the section;
+        // OpenAudioChannel falls back to the Nexus wss URL when NVS url is empty.
+        has_websocket_config_ = true;
+#endif
     }
 
     has_server_time_ = false;

@@ -301,7 +301,16 @@ void Application::HandleNetworkConnectedEvent() {
         bool has_ws_identity = false;
         {
             Settings ws_settings("websocket", false);
-            has_ws_identity = !ws_settings.GetString("token").empty();
+            const std::string token = ws_settings.GetString("token");
+            const std::string url = ws_settings.GetString("url");
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+            const bool is_tenclass = url.find("tenclass") != std::string::npos;
+            const bool is_nexus =
+                url.empty() || url.find("nexus.warehouse-13.biz") != std::string::npos;
+            has_ws_identity = !token.empty() && is_nexus && !is_tenclass;
+#else
+            has_ws_identity = !token.empty();
+#endif
         }
 
         suppress_binding_ui_ = change_wifi_pending && has_ws_identity;
@@ -487,8 +496,17 @@ void Application::CheckNewVersion() {
         preserved_ws_token = ws_settings.GetString("token");
         preserved_ws_url = ws_settings.GetString("url");
         preserved_ws_version = ws_settings.GetInt("version", 0);
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+        const bool is_tenclass = preserved_ws_url.find("tenclass") != std::string::npos;
+        const bool is_nexus =
+            preserved_ws_url.empty() ||
+            preserved_ws_url.find("nexus.warehouse-13.biz") != std::string::npos;
+        // Existing Nexus device = non-empty token with empty or Nexus URL.
+        had_existing_ws_identity = !preserved_ws_token.empty() && is_nexus && !is_tenclass;
+#else
         // Existing device = non-empty token (url alone is not sufficient).
         had_existing_ws_identity = !preserved_ws_token.empty();
+#endif
     }
 
     auto& board = Board::GetInstance();
@@ -550,6 +568,41 @@ void Application::CheckNewVersion() {
         // EXISTING DEVICE (Change Wi-Fi / normal reboot with token): preserve identity,
         // skip Activate and ACTIVATION UI even if server returned an activation object.
         if (had_existing_ws_identity) {
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+            static constexpr const char* kNexusWsUrl =
+                "wss://ws.nexus.warehouse-13.biz/xiaozhi/v1/";
+            const bool preserved_is_tenclass =
+                preserved_ws_url.find("tenclass") != std::string::npos;
+            const bool preserved_is_nexus =
+                preserved_ws_url.empty() ||
+                preserved_ws_url.find("nexus.warehouse-13.biz") != std::string::npos;
+
+            if (preserved_is_tenclass || !preserved_is_nexus) {
+                // Stale non-Nexus websocket identity must not skip Nexus binding.
+                ESP_LOGW(TAG,
+                         "Discarding non-Nexus websocket identity (url=%s); "
+                         "continuing Nexus activation",
+                         preserved_ws_url.c_str());
+                Settings ws_settings("websocket", true);
+                ws_settings.SetString("url", kNexusWsUrl);
+                ws_settings.EraseKey("token");
+                // Fall through to activation checks below.
+            } else {
+                Settings ws_settings("websocket", true);
+                if (ws_settings.GetString("token") != preserved_ws_token ||
+                    ws_settings.GetString("url") != kNexusWsUrl ||
+                    ws_settings.GetInt("version", 0) != preserved_ws_version) {
+                    ESP_LOGW(TAG, "Restoring preserved Nexus websocket identity after CheckVersion");
+                    ws_settings.SetString("token", preserved_ws_token);
+                    ws_settings.SetString("url", kNexusWsUrl);
+                    if (preserved_ws_version != 0) {
+                        ws_settings.SetInt("version", preserved_ws_version);
+                    }
+                }
+                ESP_LOGI(TAG, "Existing Nexus device identity found — skipping activation");
+                break;
+            }
+#else
             Settings ws_settings("websocket", true);
             if (ws_settings.GetString("token") != preserved_ws_token ||
                 ws_settings.GetString("url") != preserved_ws_url ||
@@ -561,6 +614,7 @@ void Application::CheckNewVersion() {
             }
             ESP_LOGI(TAG, "Existing device identity found — skipping activation");
             break;
+#endif
         }
 
         if (!ota_->HasActivationCode() && !ota_->HasActivationChallenge()) {
@@ -601,6 +655,55 @@ void Application::InitializeProtocol() {
 
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
 
+#if CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT
+    static constexpr const char* kNexusWsUrl =
+        "wss://ws.nexus.warehouse-13.biz/xiaozhi/v1/";
+
+    // Clear stale Tenclass (or any leftover) MQTT so it cannot override Nexus WS.
+    bool cleared_stale_mqtt = false;
+    {
+        Settings mqtt_settings("mqtt", true);
+        std::string endpoint = mqtt_settings.GetString("endpoint");
+        if (!endpoint.empty()) {
+            ESP_LOGW(TAG, "Clearing stale MQTT NVS (endpoint=%s)", endpoint.c_str());
+            mqtt_settings.EraseAll();
+            cleared_stale_mqtt = true;
+        }
+    }
+
+    std::string ws_url;
+    std::string ws_token;
+    {
+        Settings ws_settings("websocket", true);
+        ws_url = ws_settings.GetString("url");
+        ws_token = ws_settings.GetString("token");
+        const bool url_was_empty = ws_url.empty();
+        const bool is_tenclass = ws_url.find("tenclass") != std::string::npos;
+        const bool is_nexus = ws_url.find("nexus.warehouse-13.biz") != std::string::npos;
+        if (url_was_empty || is_tenclass || !is_nexus) {
+            if (!url_was_empty) {
+                ESP_LOGW(TAG, "Replacing non-Nexus websocket URL: %s", ws_url.c_str());
+            }
+            ws_settings.SetString("url", kNexusWsUrl);
+            ws_url = kNexusWsUrl;
+            // Keep token only when URL was empty (prior Nexus default) or already Nexus.
+            // Drop Tenclass / foreign tokens — do not invent a replacement.
+            if (!url_was_empty && !is_nexus) {
+                ws_settings.EraseKey("token");
+                ws_token.clear();
+            }
+        }
+    }
+
+    ESP_LOGI(TAG, "W-13 Nexus transport selected");
+    ESP_LOGI(TAG, "Nexus websocket URL: %s", ws_url.c_str());
+    ESP_LOGI(TAG, "Preserved Nexus token: %s", ws_token.empty() ? "no" : "yes");
+    if (cleared_stale_mqtt) {
+        ESP_LOGI(TAG, "Stale Tenclass MQTT ignored/cleared");
+    }
+
+    protocol_ = std::make_unique<WebsocketProtocol>();
+#else
     if (ota_->HasMqttConfig()) {
         protocol_ = std::make_unique<MqttProtocol>();
     } else if (ota_->HasWebsocketConfig()) {
@@ -609,6 +712,7 @@ void Application::InitializeProtocol() {
         ESP_LOGW(TAG, "No protocol specified in the OTA config, using MQTT");
         protocol_ = std::make_unique<MqttProtocol>();
     }
+#endif
 
     protocol_->OnConnected([this]() { DismissAlert(); });
 

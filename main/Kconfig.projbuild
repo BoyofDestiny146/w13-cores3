@@ -6,6 +6,15 @@ config OTA_URL
     help
         The application will access this URL to check for new firmwares and server address.
 
+config W13_NEXUS_WEBSOCKET_TRANSPORT
+    bool "Force W-13 Nexus WebSocket transport"
+    default y if BOARD_TYPE_M5STACK_CORE_S3
+    default n
+    help
+        When enabled, OTA always uses the Nexus endpoint, protocol selection prefers
+        WebsocketProtocol, and stale Tenclass MQTT settings are ignored/cleared.
+        Intended for Warehouse 13 CoreS3 builds; other boards keep upstream MQTT behavior.
+
 choice
     prompt "Flash Assets"
     default FLASH_DEFAULT_ASSETS if !USE_EMOTE_MESSAGE_STYLE
