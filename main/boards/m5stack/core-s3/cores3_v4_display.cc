@@ -108,6 +108,7 @@ void CoreS3V4Display::HideAllContent() {
     Hide(ready_check_);
     Hide(emoji_box_);
     ShowHudFrame(false);
+    ShowVolumeSlider(false);
 }
 
 void CoreS3V4Display::ShowV4Layer() {
@@ -330,7 +331,17 @@ void CoreS3V4Display::ShowConversationVolumeNumber() {
     const int vol = codec != nullptr ? codec->output_volume() : 0;
     char buf[16];
     snprintf(buf, sizeof(buf), "%d%%", vol);
-    Hide(title_label_);
+
+    if (title_label_ != nullptr) {
+        lv_label_set_text(title_label_, "Volume");
+        lv_obj_set_style_text_font(title_label_, TextFont(), 0);
+        lv_obj_set_style_text_color(title_label_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_opa(title_label_, LV_OPA_COVER, 0);
+        lv_obj_set_width(title_label_, 200);
+        lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
+        PlaceCenter(title_label_, 136, kSliderLabelY);
+        Show(title_label_);
+    }
     Hide(subtitle_label_);
     if (body_label_ != nullptr) {
         lv_obj_set_style_text_font(body_label_, TextFont(), 0);
@@ -338,23 +349,130 @@ void CoreS3V4Display::ShowConversationVolumeNumber() {
         lv_obj_set_style_text_color(body_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_opa(body_label_, LV_OPA_COVER, 0);
         lv_obj_set_width(body_label_, LV_SIZE_CONTENT);
-        PlaceCenter(body_label_, 136, 200);
+        PlaceCenter(body_label_, 136, kSliderPercentY);
         Show(body_label_);
         lv_obj_move_foreground(body_label_);
     }
+    ShowHudFrame(true);
+    ShowVolumeSlider(true);
+    SyncVolumeSliderFromCodec();
     ApplyMenuSelectionVisuals();
 }
 
 void CoreS3V4Display::RefreshVolumeOverlay() {
-    if (screen_ == V4Screen::Listening || screen_ == V4Screen::Speaking) {
-        ShowConversationVolumeNumber();
+    ShowConversationVolumeNumber();
+}
+
+void CoreS3V4Display::CreateVolumeSlider() {
+    if (v4_layer_ == nullptr || volume_slider_ != nullptr) {
+        return;
+    }
+    volume_slider_ = lv_slider_create(v4_layer_);
+    lv_obj_set_pos(volume_slider_, kSliderX, kSliderY);
+    lv_obj_set_size(volume_slider_, kSliderW, kSliderH);
+    lv_slider_set_range(volume_slider_, 0, 100);
+    lv_slider_set_value(volume_slider_, 0, LV_ANIM_OFF);
+    lv_obj_remove_flag(volume_slider_, LV_OBJ_FLAG_SCROLLABLE);
+    // Touch is routed via FT6336 → OnTap/OnTouchMove, not LVGL indev.
+    lv_obj_remove_flag(volume_slider_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(volume_slider_, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_set_style_bg_color(volume_slider_, lv_color_hex(0x3A3A3A), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(volume_slider_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(volume_slider_, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(volume_slider_, 0, LV_PART_MAIN);
+
+    lv_obj_set_style_bg_color(volume_slider_, lv_color_hex(kLime), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(volume_slider_, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(volume_slider_, 6, LV_PART_INDICATOR);
+
+    lv_obj_set_style_bg_color(volume_slider_, lv_color_hex(kLime), LV_PART_KNOB);
+    lv_obj_set_style_bg_opa(volume_slider_, LV_OPA_COVER, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(volume_slider_, 6, LV_PART_KNOB);
+    lv_obj_set_style_radius(volume_slider_, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+}
+
+void CoreS3V4Display::ShowVolumeSlider(bool visible) {
+    if (volume_slider_ == nullptr) {
+        return;
+    }
+    if (visible) {
+        Show(volume_slider_);
+        lv_obj_move_foreground(volume_slider_);
+    } else {
+        Hide(volume_slider_);
+        volume_slider_dragging_ = false;
+    }
+}
+
+void CoreS3V4Display::SyncVolumeSliderFromCodec() {
+    if (volume_slider_ == nullptr) {
         return;
     }
     auto codec = Board::GetInstance().GetAudioCodec();
-    const int vol = codec != nullptr ? codec->output_volume() : 0;
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d%%", vol);
-    ShowOverlayText("Volume", buf, nullptr);
+    int vol = codec != nullptr ? codec->output_volume() : 0;
+    if (vol < 0) {
+        vol = 0;
+    }
+    if (vol > 100) {
+        vol = 100;
+    }
+    if (lv_slider_get_value(volume_slider_) != vol) {
+        lv_slider_set_value(volume_slider_, vol, LV_ANIM_OFF);
+    }
+}
+
+bool CoreS3V4Display::HitTestVolumeSlider(int x, int y) const {
+    if (menu_mode_ != MenuMode::VolumeAdjust) {
+        return false;
+    }
+    const int top = kSliderY - kSliderHitPadY;
+    const int bottom = kSliderY + kSliderH + kSliderHitPadY;
+    return x >= kSliderX && x <= (kSliderX + kSliderW) && y >= top && y <= bottom;
+}
+
+bool CoreS3V4Display::ApplyVolumeFromSliderX(int x) {
+    auto codec = Board::GetInstance().GetAudioCodec();
+    if (codec == nullptr) {
+        return false;
+    }
+    int rel = x - kSliderX;
+    if (rel < 0) {
+        rel = 0;
+    }
+    if (rel > kSliderW) {
+        rel = kSliderW;
+    }
+    int vol = (rel * 100 + kSliderW / 2) / kSliderW;
+    if (vol < 0) {
+        vol = 0;
+    }
+    if (vol > 100) {
+        vol = 100;
+    }
+    const int current = codec->output_volume();
+    if (current != vol) {
+        codec->SetOutputVolume(vol);
+        ESP_LOGI(TAG, "Volume slider %d -> %d", current, vol);
+    }
+    if (volume_slider_ != nullptr) {
+        lv_slider_set_value(volume_slider_, vol, LV_ANIM_OFF);
+    }
+    if (body_label_ != nullptr) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d%%", vol);
+        lv_label_set_text(body_label_, buf);
+        Show(body_label_);
+    }
+    if (title_label_ != nullptr) {
+        // Ensure title stays visible during drag (listening/speaking path).
+        if (lv_obj_has_flag(title_label_, LV_OBJ_FLAG_HIDDEN)) {
+            lv_label_set_text(title_label_, "Volume");
+            PlaceCenter(title_label_, 136, kSliderLabelY);
+            Show(title_label_);
+        }
+    }
+    return true;
 }
 
 void CoreS3V4Display::ShowTasksPlaceholder() {
@@ -380,6 +498,8 @@ void CoreS3V4Display::ShowWifiConfirmMode() {
 void CoreS3V4Display::ReturnFromOverlay() {
     menu_mode_ = MenuMode::Browse;
     wifi_confirm_yes_ = false;
+    volume_slider_dragging_ = false;
+    ShowVolumeSlider(false);
     Hide(body_label_);
     Hide(title_label_);
     Hide(subtitle_label_);
@@ -868,6 +988,30 @@ bool CoreS3V4Display::OnTap(int x, int y) {
             return true;
         }
 
+        // Volume mode: icon column still selects/activates menu items.
+        if (menu_mode_ == MenuMode::VolumeAdjust && IsMenuScreen() && x >= kIconColumnX) {
+            int row = y / kRowHeight;
+            if (row < 0) {
+                row = 0;
+            }
+            if (row >= static_cast<int>(MenuItem::Count)) {
+                row = static_cast<int>(MenuItem::Count) - 1;
+            }
+            const auto item = static_cast<MenuItem>(row);
+            if (item == MenuItem::Volume) {
+                // Re-tap Volume icon: stay in overlay (do not exit / chat-toggle).
+                menu_selected_ = MenuItem::Volume;
+                ApplyMenuSelectionVisuals();
+                return true;
+            }
+            ShowVolumeSlider(false);
+            volume_slider_dragging_ = false;
+            menu_selected_ = item;
+            ApplyMenuSelectionVisuals();
+            ActivateSelectedMenuItem();
+            return true;
+        }
+
         switch (menu_mode_) {
             case MenuMode::Browse:
                 if (!IsMenuScreen()) {
@@ -876,6 +1020,10 @@ bool CoreS3V4Display::OnTap(int x, int y) {
                 ActivateSelectedMenuItem();
                 return true;
             case MenuMode::VolumeAdjust:
+                if (HitTestVolumeSlider(x, y)) {
+                    ApplyVolumeFromSliderX(x);
+                    return true;
+                }
                 ESP_LOGI(TAG, "Volume adjust exit");
                 ReturnFromOverlay();
                 return true;
@@ -936,6 +1084,29 @@ bool CoreS3V4Display::OnTap(int x, int y) {
         return ConfirmChangeWifi();
     }
     return true;
+}
+
+bool CoreS3V4Display::OnTouchMove(int x, int y) {
+    DisplayLockGuard lock(this);
+    if (menu_mode_ != MenuMode::VolumeAdjust) {
+        volume_slider_dragging_ = false;
+        return false;
+    }
+    // Start drag when entering the slider band; continue while dragging even if
+    // Y drifts slightly so the thumb stays under the finger.
+    if (!volume_slider_dragging_) {
+        if (!HitTestVolumeSlider(x, y)) {
+            return false;
+        }
+        volume_slider_dragging_ = true;
+    }
+    ApplyVolumeFromSliderX(x);
+    return true;
+}
+
+void CoreS3V4Display::OnTouchEnd() {
+    DisplayLockGuard lock(this);
+    volume_slider_dragging_ = false;
 }
 
 void CoreS3V4Display::SetupUI() {
@@ -1007,6 +1178,7 @@ void CoreS3V4Display::SetupUI() {
     PlaceCenter(icon_wifi_, kIconCenterX, 210);
 
     CreateHudFrame();
+    CreateVolumeSlider();
 
     esp_timer_create_args_t ready_args = {};
     ready_args.callback = ReadySplashTimerCallback;
@@ -1016,7 +1188,7 @@ void CoreS3V4Display::SetupUI() {
     ESP_ERROR_CHECK(esp_timer_create(&ready_args, &ready_timer_));
 
     ShowBootInitializingScreen();
-    ESP_LOGI(TAG, "V4 UI on 320x240 — segmented HUD frame, muted menu icons");
+    ESP_LOGI(TAG, "V4 UI on 320x240 — segmented HUD frame, volume slider");
 }
 
 void CoreS3V4Display::SetTheme(Theme* theme) {

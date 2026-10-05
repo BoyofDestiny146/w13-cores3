@@ -232,6 +232,10 @@ private:
         } else if (touch_point.num > 0 && was_touched) {
             last_x = touch_point.x;
             last_y = touch_point.y;
+            // Feed continuous moves so the volume slider can track a drag.
+            if (display_ != nullptr) {
+                display_->OnTouchMove(last_x, last_y);
+            }
         } else if (touch_point.num == 0 && was_touched) {
             was_touched = false;
             int64_t touch_duration = (esp_timer_get_time() / 1000) - touch_start_time;
@@ -240,8 +244,15 @@ private:
             int abs_dx = dx < 0 ? -dx : dx;
             int abs_dy = dy < 0 ? -dy : dy;
 
+            if (display_ != nullptr) {
+                display_->OnTouchEnd();
+            }
+
             // Vertical swipe replaces the Watcher rotary encoder.
-            if (abs_dy >= SWIPE_THRESHOLD_PX && abs_dy > abs_dx && touch_duration < 1500) {
+            // Skip swipe-as-volume-step when the gesture was a horizontal slider drag.
+            const bool likely_slider_drag = abs_dx >= SWIPE_THRESHOLD_PX && abs_dx >= abs_dy;
+            if (!likely_slider_drag && abs_dy >= SWIPE_THRESHOLD_PX && abs_dy > abs_dx &&
+                touch_duration < 1500) {
                 display_->OnVerticalSwipe(dy > 0);
                 return;
             }
@@ -254,7 +265,10 @@ private:
                 }
                 // Tap in the icon column selects that item; a tap elsewhere is the wheel click.
                 // Unhandled taps keep the previous chat toggle.
-                if (display_ == nullptr || !display_->OnTap(start_x, start_y)) {
+                // For slider taps/drags, use the release point so volume hits stick.
+                const int tap_x = likely_slider_drag ? last_x : start_x;
+                const int tap_y = likely_slider_drag ? last_y : start_y;
+                if (display_ == nullptr || !display_->OnTap(tap_x, tap_y)) {
                     app.ToggleChatState();
                 }
             }

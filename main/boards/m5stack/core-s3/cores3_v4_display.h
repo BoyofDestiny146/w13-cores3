@@ -21,6 +21,9 @@ public:
     // x/y are FT6336 coordinates. A tap in the right icon column selects and activates
     // that item. A tap elsewhere is the wheel click.
     bool OnTap(int x, int y);
+    // Continuous touch move while finger is down (volume slider drag).
+    bool OnTouchMove(int x, int y);
+    void OnTouchEnd();
 
     void SetupUI() override;
     void SetStatus(const char* status) override;
@@ -77,6 +80,14 @@ private:
     static constexpr int kFrameCorner = 28;
     static constexpr int kFrameLineW = 2;
     static constexpr int kFrameSegCount = 8;
+    // Volume slider geometry (inside HUD frame; left of icon column).
+    static constexpr int kSliderX = 48;
+    static constexpr int kSliderY = 118;
+    static constexpr int kSliderW = 176;
+    static constexpr int kSliderH = 22;
+    static constexpr int kSliderHitPadY = 18;
+    static constexpr int kSliderLabelY = 78;
+    static constexpr int kSliderPercentY = 168;
     // Change Wi-Fi overlay lines (ShowOverlayText centers): No @ y=130, Yes @ y=168.
     static constexpr int kWifiConfirmNoCenterY = 130;
     static constexpr int kWifiConfirmYesCenterY = 168;
@@ -104,11 +115,13 @@ private:
     lv_obj_t* hud_frame_ = nullptr;
     lv_obj_t* frame_lines_[kFrameSegCount] = {};
     lv_point_precise_t frame_pts_[kFrameSegCount][2] = {};
+    lv_obj_t* volume_slider_ = nullptr;
 
     esp_timer_handle_t ready_timer_ = nullptr;
     bool binding_ui_shown_ = false;
     bool ready_splash_active_ = false;
     bool wifi_confirm_yes_ = false;
+    bool volume_slider_dragging_ = false;
     V4Screen screen_ = V4Screen::Boot;
     MenuItem menu_selected_ = MenuItem::Talk;
     MenuMode menu_mode_ = MenuMode::Inactive;
@@ -136,6 +149,11 @@ private:
     void ApplyWifiConfirmOptionVisuals();
     void ShowConversationVolumeNumber();
     void RefreshVolumeOverlay();
+    void CreateVolumeSlider();
+    void ShowVolumeSlider(bool visible);
+    void SyncVolumeSliderFromCodec();
+    bool HitTestVolumeSlider(int x, int y) const;
+    bool ApplyVolumeFromSliderX(int x);
     void ShowTasksPlaceholder();
     void ShowVolumeAdjustMode();
     void ShowWifiConfirmMode();
