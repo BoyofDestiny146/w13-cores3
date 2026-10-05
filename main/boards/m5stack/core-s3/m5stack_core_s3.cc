@@ -1,6 +1,7 @@
 #include "wifi_board.h"
 #include "cores3_audio_codec.h"
 #include "codecs/es8388_audio_codec.h"
+#include "m144_linemic_route.h"
 #include "cores3_v4_display.h"
 #include "application.h"
 #include "config.h"
@@ -17,6 +18,23 @@
 #include "esp_video.h"
 
 #define TAG "M5StackCoreS3Board"
+
+namespace {
+
+// Keep Es8388 duplex playback; after ADC open, force LIN1 per M5Module-Audio.
+class M144Es8388AudioCodec : public Es8388AudioCodec {
+public:
+    using Es8388AudioCodec::Es8388AudioCodec;
+
+    void EnableInput(bool enable) override {
+        Es8388AudioCodec::EnableInput(enable);
+        if (enable) {
+            SelectMicInputLin1();
+        }
+    }
+};
+
+}  // namespace
 
 class Pmic : public Axp2101 {
 public:
@@ -358,6 +376,8 @@ public:
         InitializeAxp2101();
         InitializeAw9523();
         I2cDetect();
+        // Route M144 LINE/MIC jack to ES8388 LIN1 (disable headset mic path).
+        M144EnableLineMicPath(i2c_bus_);
         InitializeSpi();
         InitializeIli9342Display();
         InitializeCamera();
@@ -366,7 +386,7 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-        static Es8388AudioCodec audio_codec(
+        static M144Es8388AudioCodec audio_codec(
             i2c_bus_,
             I2C_NUM_1,
             AUDIO_INPUT_SAMPLE_RATE,

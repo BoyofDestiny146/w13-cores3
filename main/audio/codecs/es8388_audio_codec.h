@@ -36,6 +36,10 @@ public:
     virtual void SetOutputVolume(int volume) override;
     virtual void EnableInput(bool enable) override;
     virtual void EnableOutput(bool enable) override;
+
+    // Select ES8388 ADC LIN1/RIN1, matching M5Module-Audio setMicInputLine(
+    // ADC_INPUT_LINPUT1_RINPUT1). Safe to call after EnableInput(true).
+    bool SelectMicInputLin1();
 };
 
 #endif // _ES8388_AUDIO_CODEC_H

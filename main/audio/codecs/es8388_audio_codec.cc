@@ -141,6 +141,41 @@ void Es8388AudioCodec::SetOutputVolume(int volume) {
     AudioCodec::SetOutputVolume(volume);
 }
 
+bool Es8388AudioCodec::SelectMicInputLin1() {
+    if (ctrl_if_ == nullptr) {
+        ESP_LOGE(TAG, "SelectMicInputLin1: ctrl_if_ is null");
+        return false;
+    }
+
+    // M5Module-Audio ES8388::setADCInput(ADC_INPUT_LINPUT1_RINPUT1):
+    //   ADCCONTROL2 = (reg & 0x0f) | 0x00
+    //   ADCCONTROL3 = 0x00
+    uint8_t adc2 = 0;
+    if (ctrl_if_->read_reg(ctrl_if_, 0x0a, 1, &adc2, 1) != 0) {
+        ESP_LOGE(TAG, "SelectMicInputLin1: failed to read ADCCONTROL2");
+        return false;
+    }
+    adc2 = static_cast<uint8_t>((adc2 & 0x0f) | 0x00);
+    uint8_t adc3 = 0x00;
+    if (ctrl_if_->write_reg(ctrl_if_, 0x0a, 1, &adc2, 1) != 0 ||
+        ctrl_if_->write_reg(ctrl_if_, 0x0b, 1, &adc3, 1) != 0) {
+        ESP_LOGE(TAG, "SelectMicInputLin1: failed to write ADCCONTROL2/3");
+        return false;
+    }
+
+    uint8_t verify2 = 0;
+    uint8_t verify3 = 0;
+    uint8_t pga = 0;
+    ctrl_if_->read_reg(ctrl_if_, 0x0a, 1, &verify2, 1);
+    ctrl_if_->read_reg(ctrl_if_, 0x0b, 1, &verify3, 1);
+    ctrl_if_->read_reg(ctrl_if_, 0x09, 1, &pga, 1);
+    ESP_LOGI(TAG,
+             "ES8388 microphone input selected: LIN1/RIN1 "
+             "(ADCCONTROL2=0x%02X ADCCONTROL3=0x%02X PGA/ADCCONTROL1=0x%02X unchanged)",
+             verify2, verify3, pga);
+    return true;
+}
+
 void Es8388AudioCodec::EnableInput(bool enable) {
     std::lock_guard<std::mutex> lock(data_if_mutex_);
     if (enable == input_enabled_) {
