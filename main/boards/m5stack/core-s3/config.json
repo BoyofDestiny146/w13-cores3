@@ -16,7 +16,8 @@
                 "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
                 "CONFIG_OTA_URL=\"https://ota.nexus.warehouse-13.biz/xiaozhi/ota/\"",
                 "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y",
-                "CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL=y"
+                "CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL=y",
+                "CONFIG_LANGUAGE_EN_US=y"
             ]
         },
         {
@@ -32,7 +33,8 @@
                 "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
                 "CONFIG_OTA_URL=\"https://ota.nexus.warehouse-13.biz/xiaozhi/ota/\"",
                 "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y",
-                "CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC=y"
+                "CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC=y",
+                "CONFIG_LANGUAGE_EN_US=y"
             ]
         }
     ]
