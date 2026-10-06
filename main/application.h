@@ -126,6 +126,15 @@ public:
     bool ShouldSuppressBindingUi() const { return suppress_binding_ui_; }
 
     /**
+     * True when the existing XiaoZhi/Nexus protocol session is established and usable.
+     * Uses the live protocol channel when open; Idle/Notifying with an initialized
+     * protocol counts as ready (WebSocket closes when idle). Connecting/unavailable
+     * states return false. Does not open a new connection. Callers that gate on
+     * network should also require live Wi-Fi association.
+     */
+    bool IsNexusSessionActive() const;
+
+    /**
      * Reset protocol resources (thread-safe)
      * Can be called from any task to release resources allocated after network connected
      * This includes closing audio channel, resetting protocol and ota objects

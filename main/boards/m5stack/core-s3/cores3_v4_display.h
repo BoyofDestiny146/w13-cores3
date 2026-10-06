@@ -63,6 +63,7 @@ private:
     };
 
     static constexpr uint32_t kLime = 0x7CFF14;
+    static constexpr uint32_t kStatusRed = 0xF01818;
     static constexpr uint32_t kIconMuted = 0x8B8B8B;
     static constexpr uint32_t kIconSelected = 0xFFFFFF;
     static constexpr int kIconColumnX = 268;
@@ -72,14 +73,28 @@ private:
     static constexpr int kVolumeStep = 5;
     static constexpr int kReadySplashUs = 4000000;
     static constexpr int64_t kSwipeDebounceUs = 120000;
-    // HUD frame in the content pane (left of icon column, below status row).
-    static constexpr int kFrameLeft = 26;
-    static constexpr int kFrameTop = 40;
-    static constexpr int kFrameRight = 246;
-    static constexpr int kFrameBottom = 220;
+    // HUD frame: equal 8px margins in the content pane (left of icon column).
+    // Content pane usable width ends at kIconColumnX; top clears the status row.
+    static constexpr int kFrameLeft = 8;
+    static constexpr int kFrameTop = 28;
+    static constexpr int kFrameRight = 260;
+    static constexpr int kFrameBottom = 232;
     static constexpr int kFrameCorner = 28;
     static constexpr int kFrameLineW = 2;
     static constexpr int kFrameSegCount = 8;
+    // Content center inside the frame (symmetrical between L/R).
+    static constexpr int kContentCenterX = (kFrameLeft + kFrameRight) / 2;  // 134
+    // Agent emoji: 64px asset scaled 2x (LVGL scale 256 = 100%).
+    static constexpr int kEmojiScale = 512;
+    static constexpr int kEmojiCenterY = 128;
+    static constexpr int kStatusLabelY = 46;
+    // NEXUS status word: centered between lower corner brackets.
+    static constexpr int kNexusStatusY = 214;
+    // Provision QR (native 165x165) + URL under it, inside the frame.
+    static constexpr int kQrSize = 165;
+    static constexpr int kQrX = kContentCenterX - kQrSize / 2;  // 52
+    static constexpr int kQrY = 50;
+    static constexpr int kQrUrlY = 226;
     // Volume slider geometry (inside HUD frame; left of icon column).
     static constexpr int kSliderX = 48;
     static constexpr int kSliderY = 118;
@@ -142,6 +157,11 @@ private:
     void ApplyMenuSelectionVisuals();
     void RefreshStatusRow();
     void ShowStatusRow(bool visible);
+    void RefreshWifiStatusColor();
+    void RefreshNexusStatusColor();
+    void ShowNexusStatusIndicator(bool visible);
+    void ApplyAgentEmojiLayout();
+    bool IsLiveWifiConnected() const;
     bool IsMenuScreen() const;
     bool IsClockText(const char* status) const;
     void EnterBrowseMode();

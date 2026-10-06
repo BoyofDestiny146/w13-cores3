@@ -1350,6 +1350,27 @@ void Application::AbortSpeaking(AbortReason reason) {
     }
 }
 
+bool Application::IsNexusSessionActive() const {
+    if (!protocol_) {
+        return false;
+    }
+    // Live open audio/WebSocket (or MQTT+UDP) channel — definitive connected session.
+    if (protocol_->IsAudioChannelOpened()) {
+        return true;
+    }
+    const DeviceState state = GetDeviceState();
+    // Opening or reopening the channel: not yet established.
+    if (state == kDeviceStateConnecting) {
+        return false;
+    }
+    // WebSocket closes when idle; Idle/Notifying with an initialized protocol means
+    // the device remains session-ready without requiring continuous traffic.
+    if (state == kDeviceStateIdle || state == kDeviceStateNotifying) {
+        return true;
+    }
+    return false;
+}
+
 void Application::SetListeningMode(ListeningMode mode) {
     listening_mode_ = mode;
     SetDeviceState(kDeviceStateListening);

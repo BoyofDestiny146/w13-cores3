@@ -9,6 +9,8 @@
 #include "settings.h"
 #include "ssid_manager.h"
 
+#include <wifi_manager.h>
+
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -225,6 +227,7 @@ void CoreS3V4Display::RefreshStatusRow() {
     if (status_wifi_ != nullptr) {
         const char* icon = board.GetNetworkStateIcon();
         lv_label_set_text(status_wifi_, icon != nullptr ? icon : MATERIAL_SYMBOLS_WIFI_OFF);
+        RefreshWifiStatusColor();
     }
     if (status_battery_ != nullptr) {
         int level = 0;
@@ -251,6 +254,63 @@ void CoreS3V4Display::RefreshStatusRow() {
         }
         lv_label_set_text(status_battery_, icon);
     }
+    RefreshNexusStatusColor();
+}
+
+bool CoreS3V4Display::IsLiveWifiConnected() const {
+    auto& wifi = WifiManager::GetInstance();
+    // Live STA association only — config AP / saved credentials alone do not count.
+    return wifi.IsInitialized() && wifi.IsConnected() && !wifi.IsConfigMode();
+}
+
+void CoreS3V4Display::RefreshWifiStatusColor() {
+    if (status_wifi_ == nullptr) {
+        return;
+    }
+    const uint32_t color = IsLiveWifiConnected() ? kLime : kStatusRed;
+    lv_obj_set_style_text_color(status_wifi_, lv_color_hex(color), 0);
+}
+
+void CoreS3V4Display::RefreshNexusStatusColor() {
+    if (nexus_logo_ == nullptr || lv_obj_has_flag(nexus_logo_, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+    // Boot splash uses white NEXUS branding; only color the bottom status indicator.
+    if (screen_ == V4Screen::Boot) {
+        return;
+    }
+    // Wi-Fi drop forces RED even if protocol object still exists.
+    const bool nexus_ok =
+        IsLiveWifiConnected() && Application::GetInstance().IsNexusSessionActive();
+    lv_obj_set_style_text_color(nexus_logo_, lv_color_hex(nexus_ok ? kLime : kStatusRed), 0);
+}
+
+void CoreS3V4Display::ShowNexusStatusIndicator(bool visible) {
+    if (nexus_logo_ == nullptr) {
+        return;
+    }
+    if (!visible) {
+        Hide(nexus_logo_);
+        return;
+    }
+    lv_label_set_text(nexus_logo_, "NEXUS");
+    lv_obj_set_style_text_letter_space(nexus_logo_, 4, 0);
+    lv_obj_set_style_text_font(nexus_logo_, TextFont(), 0);
+    lv_obj_set_style_text_opa(nexus_logo_, LV_OPA_COVER, 0);
+    PlaceCenter(nexus_logo_, kContentCenterX, kNexusStatusY);
+    Show(nexus_logo_);
+    RefreshNexusStatusColor();
+}
+
+void CoreS3V4Display::ApplyAgentEmojiLayout() {
+    if (emoji_box_ == nullptr) {
+        return;
+    }
+    PlaceCenter(emoji_box_, kContentCenterX, kEmojiCenterY);
+    if (emoji_image_ != nullptr) {
+        lv_image_set_scale(emoji_image_, kEmojiScale);
+    }
+    Show(emoji_box_);
 }
 
 void CoreS3V4Display::ShowStatusRow(bool visible) {
@@ -285,7 +345,6 @@ void CoreS3V4Display::EnterBrowseMode() {
 }
 
 void CoreS3V4Display::ShowOverlayText(const char* title, const char* subtitle, const char* body) {
-    Hide(nexus_logo_);
     Hide(listening_label_);
     Hide(emoji_box_);
     Hide(ready_check_);
@@ -293,6 +352,7 @@ void CoreS3V4Display::ShowOverlayText(const char* title, const char* subtitle, c
     Hide(icon_label_);
     ShowStatusRow(false);
     ShowHudFrame(true);
+    ShowNexusStatusIndicator(true);
 
     auto set_line = [&](lv_obj_t* label, const char* text, int y) {
         if (label == nullptr) {
@@ -304,7 +364,7 @@ void CoreS3V4Display::ShowOverlayText(const char* title, const char* subtitle, c
         lv_obj_set_style_text_opa(label, LV_OPA_COVER, 0);
         lv_obj_set_width(label, 240);
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(label, 136, y);
+        PlaceCenter(label, kContentCenterX, y);
         if (text != nullptr && text[0] != '\0') {
             Show(label);
         } else {
@@ -339,7 +399,7 @@ void CoreS3V4Display::ShowConversationVolumeNumber() {
         lv_obj_set_style_text_opa(title_label_, LV_OPA_COVER, 0);
         lv_obj_set_width(title_label_, 200);
         lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(title_label_, 136, kSliderLabelY);
+        PlaceCenter(title_label_, kContentCenterX, kSliderLabelY);
         Show(title_label_);
     }
     Hide(subtitle_label_);
@@ -349,11 +409,12 @@ void CoreS3V4Display::ShowConversationVolumeNumber() {
         lv_obj_set_style_text_color(body_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_opa(body_label_, LV_OPA_COVER, 0);
         lv_obj_set_width(body_label_, LV_SIZE_CONTENT);
-        PlaceCenter(body_label_, 136, kSliderPercentY);
+        PlaceCenter(body_label_, kContentCenterX, kSliderPercentY);
         Show(body_label_);
         lv_obj_move_foreground(body_label_);
     }
     ShowHudFrame(true);
+    ShowNexusStatusIndicator(true);
     ShowVolumeSlider(true);
     SyncVolumeSliderFromCodec();
     ApplyMenuSelectionVisuals();
@@ -468,7 +529,7 @@ bool CoreS3V4Display::ApplyVolumeFromSliderX(int x) {
         // Ensure title stays visible during drag (listening/speaking path).
         if (lv_obj_has_flag(title_label_, LV_OBJ_FLAG_HIDDEN)) {
             lv_label_set_text(title_label_, "Volume");
-            PlaceCenter(title_label_, 136, kSliderLabelY);
+            PlaceCenter(title_label_, kContentCenterX, kSliderLabelY);
             Show(title_label_);
         }
     }
@@ -624,13 +685,14 @@ void CoreS3V4Display::ShowProvisionQrScreen() {
     menu_mode_ = MenuMode::Inactive;
     ShowV4Layer();
     HideAllContent();
+    ShowHudFrame(true);
     if (title_label_ != nullptr) {
         lv_label_set_text(title_label_, "CONNECT TO NEXUS");
         lv_obj_set_style_text_color(title_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_font(title_label_, TextFont(), 0);
         lv_obj_set_width(title_label_, 250);
         lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(title_label_, 136, 18);
+        PlaceCenter(title_label_, kContentCenterX, 18);
         Show(title_label_);
     }
     if (subtitle_label_ != nullptr) {
@@ -639,7 +701,7 @@ void CoreS3V4Display::ShowProvisionQrScreen() {
         lv_obj_set_style_text_font(subtitle_label_, TextFont(), 0);
         lv_obj_set_width(subtitle_label_, 250);
         lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(subtitle_label_, 136, 44);
+        PlaceCenter(subtitle_label_, kContentCenterX, 40);
         Show(subtitle_label_);
     }
     if (qr_image_ != nullptr) {
@@ -647,8 +709,18 @@ void CoreS3V4Display::ShowProvisionQrScreen() {
         lv_image_set_src(qr_image_, &nexus_wifi_qr);
         lv_image_set_scale(qr_image_, LV_SCALE_NONE);
         lv_image_set_antialias(qr_image_, false);
-        lv_obj_set_pos(qr_image_, 50, 68);
+        lv_obj_set_pos(qr_image_, kQrX, kQrY);
         Show(qr_image_);
+    }
+    if (body_label_ != nullptr) {
+        lv_label_set_text(body_label_, "http://192.168.4.1");
+        lv_obj_set_style_text_font(body_label_, TextFont(), 0);
+        lv_obj_set_style_text_color(body_label_, lv_color_hex(kLime), 0);
+        lv_obj_set_style_text_opa(body_label_, LV_OPA_COVER, 0);
+        lv_obj_set_width(body_label_, 250);
+        lv_obj_set_style_text_align(body_label_, LV_TEXT_ALIGN_CENTER, 0);
+        PlaceCenter(body_label_, kContentCenterX, kQrUrlY);
+        Show(body_label_);
     }
 }
 
@@ -662,7 +734,7 @@ void CoreS3V4Display::ShowWaitingWifiScreen() {
         lv_label_set_text(icon_label_, MATERIAL_SYMBOLS_WIFI);
         lv_obj_set_style_text_font(icon_label_, LargeIconFont(), 0);
         lv_obj_set_style_text_color(icon_label_, lv_color_hex(kLime), 0);
-        PlaceCenter(icon_label_, 136, 70);
+        PlaceCenter(icon_label_, kContentCenterX, 70);
         Show(icon_label_);
     }
     if (title_label_ != nullptr) {
@@ -670,19 +742,19 @@ void CoreS3V4Display::ShowWaitingWifiScreen() {
         lv_obj_set_style_text_color(title_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_width(title_label_, 250);
         lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(title_label_, 136, 130);
+        PlaceCenter(title_label_, kContentCenterX, 130);
         Show(title_label_);
     }
     if (subtitle_label_ != nullptr) {
         lv_label_set_text(subtitle_label_, "Setup...");
         lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xFFFFFF), 0);
-        PlaceCenter(subtitle_label_, 136, 162);
+        PlaceCenter(subtitle_label_, kContentCenterX, 162);
         Show(subtitle_label_);
     }
     if (body_label_ != nullptr) {
         lv_label_set_text(body_label_, "http://192.168.4.1");
         lv_obj_set_style_text_color(body_label_, lv_color_hex(kLime), 0);
-        PlaceCenter(body_label_, 136, 196);
+        PlaceCenter(body_label_, kContentCenterX, 196);
         Show(body_label_);
     }
 }
@@ -700,13 +772,13 @@ void CoreS3V4Display::ShowBindingScreen(bool mark_real_binding) {
         lv_label_set_text(icon_label_, MATERIAL_SYMBOLS_WIFI);
         lv_obj_set_style_text_font(icon_label_, LargeIconFont(), 0);
         lv_obj_set_style_text_color(icon_label_, lv_color_hex(kLime), 0);
-        PlaceCenter(icon_label_, 136, 64);
+        PlaceCenter(icon_label_, kContentCenterX, 64);
         Show(icon_label_);
     }
     if (subtitle_label_ != nullptr) {
         lv_label_set_text(subtitle_label_, "Wi-Fi Connected");
         lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xFFFFFF), 0);
-        PlaceCenter(subtitle_label_, 136, 120);
+        PlaceCenter(subtitle_label_, kContentCenterX, 120);
         Show(subtitle_label_);
     }
     if (title_label_ != nullptr) {
@@ -714,13 +786,13 @@ void CoreS3V4Display::ShowBindingScreen(bool mark_real_binding) {
         lv_obj_set_style_text_color(title_label_, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_width(title_label_, 250);
         lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-        PlaceCenter(title_label_, 136, 156);
+        PlaceCenter(title_label_, kContentCenterX, 156);
         Show(title_label_);
     }
     if (body_label_ != nullptr) {
         lv_label_set_text(body_label_, "your account");
         lv_obj_set_style_text_color(body_label_, lv_color_hex(0xFFFFFF), 0);
-        PlaceCenter(body_label_, 136, 190);
+        PlaceCenter(body_label_, kContentCenterX, 190);
         Show(body_label_);
     }
 }
@@ -762,13 +834,7 @@ void CoreS3V4Display::ShowMainScreen() {
     HideAllContent();
     ShowHudFrame(true);
     ShowStatusRow(true);
-    if (nexus_logo_ != nullptr) {
-        lv_label_set_text(nexus_logo_, "NEXUS");
-        lv_obj_set_style_text_letter_space(nexus_logo_, 4, 0);
-        lv_obj_set_style_text_color(nexus_logo_, lv_color_hex(0xFFFFFF), 0);
-        PlaceCenter(nexus_logo_, 136, 120);
-        Show(nexus_logo_);
-    }
+    ShowNexusStatusIndicator(true);
     ApplyMenuSelectionVisuals();
 }
 
@@ -784,23 +850,22 @@ void CoreS3V4Display::ShowListeningScreen() {
     ShowV4Layer();
     if (keep_modal) {
         ShowHudFrame(true);
+        ShowNexusStatusIndicator(true);
         ApplyMenuSelectionVisuals();
         return;
     }
     HideAllContent();
     ShowHudFrame(true);
     ShowStatusRow(true);
+    ShowNexusStatusIndicator(true);
     if (listening_label_ != nullptr) {
         lv_label_set_text(listening_label_, "Listening");
         lv_obj_set_style_text_color(listening_label_, lv_color_hex(0xFFB300), 0);
-        PlaceCenter(listening_label_, 136, 48);
+        PlaceCenter(listening_label_, kContentCenterX, kStatusLabelY);
         Show(listening_label_);
     }
     SpiLcdDisplay::SetEmotion("happy");
-    if (emoji_box_ != nullptr) {
-        PlaceCenter(emoji_box_, 136, 130);
-        Show(emoji_box_);
-    }
+    ApplyAgentEmojiLayout();
     if (keep_volume) {
         ShowConversationVolumeNumber();
     } else {
@@ -820,22 +885,21 @@ void CoreS3V4Display::ShowSpeakingScreen() {
     ShowV4Layer();
     if (keep_modal) {
         ShowHudFrame(true);
+        ShowNexusStatusIndicator(true);
         ApplyMenuSelectionVisuals();
         return;
     }
     HideAllContent();
     ShowHudFrame(true);
     ShowStatusRow(true);
+    ShowNexusStatusIndicator(true);
     if (listening_label_ != nullptr) {
         lv_label_set_text(listening_label_, "Speaking");
         lv_obj_set_style_text_color(listening_label_, lv_color_hex(0xFFB300), 0);
-        PlaceCenter(listening_label_, 136, 48);
+        PlaceCenter(listening_label_, kContentCenterX, kStatusLabelY);
         Show(listening_label_);
     }
-    if (emoji_box_ != nullptr) {
-        PlaceCenter(emoji_box_, 136, 130);
-        Show(emoji_box_);
-    }
+    ApplyAgentEmojiLayout();
     if (keep_volume) {
         ShowConversationVolumeNumber();
     } else {
@@ -1188,7 +1252,7 @@ void CoreS3V4Display::SetupUI() {
     ESP_ERROR_CHECK(esp_timer_create(&ready_args, &ready_timer_));
 
     ShowBootInitializingScreen();
-    ESP_LOGI(TAG, "V4 UI on 320x240 — segmented HUD frame, volume slider");
+    ESP_LOGI(TAG, "V4 UI on 320x240 — outward HUD frame, agent emoji 2x, live WiFi/Nexus colors");
 }
 
 void CoreS3V4Display::SetTheme(Theme* theme) {
@@ -1221,6 +1285,12 @@ void CoreS3V4Display::UpdateStatusBar(bool update_all) {
     if (screen_ == V4Screen::Main || screen_ == V4Screen::Listening ||
         screen_ == V4Screen::Speaking) {
         RefreshStatusRow();
+    } else if (screen_ == V4Screen::ProvisionQr) {
+        // Provision screen has no status row; still no-op for wifi icon.
+    }
+    // Keep NEXUS status color live on any framed operating screen.
+    if (IsMenuScreen() || menu_mode_ != MenuMode::Inactive) {
+        RefreshNexusStatusColor();
     }
     if (low_battery_popup_ != nullptr && !lv_obj_has_flag(low_battery_popup_, LV_OBJ_FLAG_HIDDEN)) {
         StyleLowBattery();
@@ -1302,18 +1372,12 @@ void CoreS3V4Display::SetEmotion(const char* emotion) {
     }
     if (screen_ == V4Screen::Listening) {
         SpiLcdDisplay::SetEmotion("happy");
-        if (emoji_box_ != nullptr) {
-            PlaceCenter(emoji_box_, 136, 130);
-            Show(emoji_box_);
-        }
+        ApplyAgentEmojiLayout();
         return;
     }
     SpiLcdDisplay::SetEmotion(emotion);
     if (screen_ == V4Screen::Speaking) {
-        if (emoji_box_ != nullptr) {
-            PlaceCenter(emoji_box_, 136, 130);
-            Show(emoji_box_);
-        }
+        ApplyAgentEmojiLayout();
         return;
     }
     if (screen_ == V4Screen::Main || screen_ == V4Screen::ReadySplash ||
