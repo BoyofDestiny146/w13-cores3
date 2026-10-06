@@ -70,10 +70,11 @@
 
 #define XCLK_FREQ_HZ 20000000
 
- 
+#define XCLK_FREQ_HZ 20000000
 
-
-/* W-13 TEST: M5Stack M144 ES8388 Audio Module - CoreS3 B pin configuration */
+/* Cube V1.0 Variant A — M5Stack M144 ES8388 Audio Module (CoreS3 Config B).
+ * Used only when CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL=y.
+ * Do NOT combine with stock ES7210 path: BCLK=GPIO0 conflicts with ES7210 MCLK. */
 #define M144_AUDIO_I2S_GPIO_MCLK GPIO_NUM_7
 #define M144_AUDIO_I2S_GPIO_BCLK GPIO_NUM_0
 #define M144_AUDIO_I2S_GPIO_WS   GPIO_NUM_6

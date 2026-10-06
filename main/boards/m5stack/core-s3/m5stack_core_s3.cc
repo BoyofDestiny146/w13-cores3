@@ -19,8 +19,10 @@
 
 #define TAG "M5StackCoreS3Board"
 
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
 namespace {
 
+// Cube V1.0 Variant A — External Audio (M144 ES8388 Config B).
 // Keep Es8388 duplex playback; after ADC open, force LIN1 per M5Module-Audio.
 class M144Es8388AudioCodec : public Es8388AudioCodec {
 public:
@@ -35,6 +37,7 @@ public:
 };
 
 }  // namespace
+#endif  // CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
 
 class Pmic : public Axp2101 {
 public:
@@ -390,8 +393,10 @@ public:
         InitializeAxp2101();
         InitializeAw9523();
         I2cDetect();
-        // Route M144 LINE/MIC jack to ES8388 LIN1 (disable headset mic path).
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // Variant A: Route M144 LINE/MIC jack to ES8388 LIN1 (disable headset mic path).
         M144EnableLineMicPath(i2c_bus_);
+#endif
         InitializeSpi();
         InitializeIli9342Display();
         InitializeCamera();
@@ -400,6 +405,10 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // Variant A — External Audio: M144 ES8388 Config B (unchanged).
+        // MCLK=GPIO7, BCLK=GPIO0, WS=GPIO6, DOUT=13, DIN=14, ES8388=0x10.
+        // I2S_NUM_0 owned exclusively by Es8388AudioCodec (no ES7210/AW88298).
         static M144Es8388AudioCodec audio_codec(
             i2c_bus_,
             I2C_NUM_1,
@@ -414,6 +423,10 @@ public:
             M144_AUDIO_CODEC_ADDR,
             false);
         return &audio_codec;
+#else
+#error "Cube internal-mic audio variant requires commit 3 architecture"
+        return nullptr;
+#endif
     }
 
     virtual Display* GetDisplay() override {
