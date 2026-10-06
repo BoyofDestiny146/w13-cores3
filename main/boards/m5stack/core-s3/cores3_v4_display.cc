@@ -15,10 +15,12 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <string>
 
 #include <esp_err.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_log.h>
+#include <esp_wifi.h>
 #include <material_symbols.h>
 
 #define TAG "CoreS3V4"
@@ -259,8 +261,32 @@ void CoreS3V4Display::RefreshStatusRow() {
 
 bool CoreS3V4Display::IsLiveWifiConnected() const {
     auto& wifi = WifiManager::GetInstance();
-    // Live STA association only — config AP / saved credentials alone do not count.
-    return wifi.IsInitialized() && wifi.IsConnected() && !wifi.IsConfigMode();
+    // Provisioning / config AP is never "connected" Wi-Fi for the status icon.
+    if (!wifi.IsInitialized() || wifi.IsConfigMode()) {
+        return false;
+    }
+    // Must be associated with an AP (rejects boot/scanning/disconnected).
+    wifi_ap_record_t ap_info = {};
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+        return false;
+    }
+    // WifiManager::IsConnected() follows the GOT_IP event bit — still verify a
+    // real non-zero IPv4 so association-without-IP stays RED.
+    if (!wifi.IsConnected()) {
+        return false;
+    }
+    const std::string ip = wifi.GetIpAddress();
+    if (ip.empty()) {
+        return false;
+    }
+    unsigned a = 0, b = 0, c = 0, d = 0;
+    if (std::sscanf(ip.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
+        return false;
+    }
+    if ((a | b | c | d) == 0) {
+        return false;
+    }
+    return true;
 }
 
 void CoreS3V4Display::RefreshWifiStatusColor() {
@@ -306,10 +332,46 @@ void CoreS3V4Display::ApplyAgentEmojiLayout() {
     if (emoji_box_ == nullptr) {
         return;
     }
-    PlaceCenter(emoji_box_, kContentCenterX, kEmojiCenterY);
+
+    // Strip default LVGL theme chrome so emoji_box_ never paints a rectangular
+    // frame (bg / border / outline / shadow) behind the face.
+    lv_obj_remove_style_all(emoji_box_);
+    lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(emoji_box_, 0, 0);
+    lv_obj_set_style_outline_width(emoji_box_, 0, 0);
+    lv_obj_set_style_pad_all(emoji_box_, 0, 0);
+    lv_obj_set_style_shadow_width(emoji_box_, 0, 0);
+    lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_CLICKABLE);
+
     if (emoji_image_ != nullptr) {
+        lv_obj_set_style_bg_opa(emoji_image_, LV_OPA_TRANSP, 0);
+        // Keep ~2x visual size (LVGL 256 = 100%).
         lv_image_set_scale(emoji_image_, kEmojiScale);
+        lv_image_set_antialias(emoji_image_, true);
+        lv_obj_center(emoji_image_);
+
+        // lv_image_set_scale does not grow the object's layout size. RAW_ALPHA
+        // (PNG-in-assets) emoji can also lose corner transparency on the scale
+        // path, which reads as a square. Size the container to the visual 2x
+        // bounds and clip to a circle so the face stays round with transparent
+        // surroundings.
+        int native_w = lv_obj_get_width(emoji_image_);
+        int native_h = lv_obj_get_height(emoji_image_);
+        if (native_w <= 0) {
+            native_w = 64;
+        }
+        if (native_h <= 0) {
+            native_h = 64;
+        }
+        const int visual_w = (native_w * kEmojiScale) / LV_SCALE_NONE;
+        const int visual_h = (native_h * kEmojiScale) / LV_SCALE_NONE;
+        lv_obj_set_size(emoji_box_, visual_w, visual_h);
+        lv_obj_set_style_radius(emoji_box_, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_clip_corner(emoji_box_, true, 0);
     }
+
+    PlaceCenter(emoji_box_, kContentCenterX, kEmojiCenterY);
     Show(emoji_box_);
 }
 
@@ -1189,6 +1251,12 @@ void CoreS3V4Display::SetupUI() {
 
     if (emoji_box_ != nullptr) {
         lv_obj_set_parent(emoji_box_, v4_layer_);
+        // Neutralize inherited theme styles up front; ApplyAgentEmojiLayout()
+        // re-applies transparent + circular clip when the face is shown.
+        lv_obj_remove_style_all(emoji_box_);
+        lv_obj_set_style_bg_opa(emoji_box_, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(emoji_box_, 0, 0);
+        lv_obj_set_style_pad_all(emoji_box_, 0, 0);
         Hide(emoji_box_);
     }
     if (low_battery_popup_ != nullptr) {
@@ -1209,7 +1277,8 @@ void CoreS3V4Display::SetupUI() {
     lv_obj_add_flag(qr_image_, LV_OBJ_FLAG_HIDDEN);
 
     status_time_ = MakeLabel(v4_layer_, text_font, 0xFFFFFF);
-    status_wifi_ = MakeLabel(v4_layer_, icon_font, 0xFFFFFF);
+    // Default RED until RefreshWifiStatusColor() proves STA + GOT_IP.
+    status_wifi_ = MakeLabel(v4_layer_, icon_font, kStatusRed);
     status_battery_ = MakeLabel(v4_layer_, icon_font, 0xFFFFFF);
     PlaceCenter(status_time_, 48, 16);
     PlaceCenter(status_wifi_, 136, 16);
