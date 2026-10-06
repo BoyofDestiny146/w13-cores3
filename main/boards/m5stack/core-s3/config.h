@@ -85,4 +85,15 @@
 #define M144_AUDIO_PA_PIN        GPIO_NUM_NC
 #define M144_STM32_I2C_ADDR      0x33
 
+/* Cube V1.0 Variant B — dedicated speaker attachment (NOT M144 Config B).
+ * Pins are intentionally unvalidated placeholders (GPIO_NUM_NC). Filling these
+ * in without bench confirmation is forbidden by the Cube audio-variant stop rule.
+ * Stock CoreS3 AW88298 (DOUT=GPIO13) is available only via temporary bench Kconfig
+ * CONFIG_CUBE_INTERNAL_SPEAKER_BENCH_AW88298 — not production. */
+#define CUBE_SPEAKER_I2S_GPIO_MCLK GPIO_NUM_NC
+#define CUBE_SPEAKER_I2S_GPIO_BCLK GPIO_NUM_NC
+#define CUBE_SPEAKER_I2S_GPIO_WS   GPIO_NUM_NC
+#define CUBE_SPEAKER_I2S_GPIO_DOUT GPIO_NUM_NC
+#define CUBE_SPEAKER_PA_PIN        GPIO_NUM_NC
+
 #endif // _BOARD_CONFIG_H_

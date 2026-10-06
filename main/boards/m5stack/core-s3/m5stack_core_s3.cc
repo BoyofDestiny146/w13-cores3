@@ -1,5 +1,6 @@
 #include "wifi_board.h"
 #include "cores3_audio_codec.h"
+#include "cube_internal_audio_codec.h"
 #include "codecs/es8388_audio_codec.h"
 #include "m144_linemic_route.h"
 #include "cores3_v4_display.h"
@@ -423,8 +424,43 @@ public:
             M144_AUDIO_CODEC_ADDR,
             false);
         return &audio_codec;
+#elif CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC
+#if CONFIG_CUBE_INTERNAL_SPEAKER_BENCH_AW88298
+        // TEMPORARY BENCH ONLY — stock CoreS3 AW88298 + ES7210.
+        // Not the final Cube V1.0 production speaker attachment.
+        // Uses GPIO0 as ES7210 MCLK (compatible). Must NOT be combined with M144 Config B.
+        ESP_LOGW(TAG, "Variant B temporary bench: stock AW88298 speaker (not production)");
+        static CoreS3AudioCodec audio_codec(
+            i2c_bus_,
+            AUDIO_INPUT_SAMPLE_RATE,
+            AUDIO_OUTPUT_SAMPLE_RATE,
+            AUDIO_I2S_GPIO_MCLK,
+            AUDIO_I2S_GPIO_BCLK,
+            AUDIO_I2S_GPIO_WS,
+            AUDIO_I2S_GPIO_DOUT,
+            AUDIO_I2S_GPIO_DIN,
+            AUDIO_CODEC_AW88298_ADDR,
+            AUDIO_CODEC_ES7210_ADDR,
+            AUDIO_INPUT_REFERENCE);
+        return &audio_codec;
 #else
-#error "Cube internal-mic audio variant requires commit 3 architecture"
+        // Variant B default: built-in ES7210 mic + compile-safe speaker stub.
+        // Dedicated speaker pins (CUBE_SPEAKER_*) remain GPIO_NUM_NC until validated.
+        // I2S_NUM_0 RX-only for ES7210; no TX GPIO claim; GPIO0 = ES7210 MCLK only.
+        static CubeInternalAudioCodec audio_codec(
+            i2c_bus_,
+            AUDIO_INPUT_SAMPLE_RATE,
+            AUDIO_OUTPUT_SAMPLE_RATE,
+            AUDIO_I2S_GPIO_MCLK,
+            AUDIO_I2S_GPIO_BCLK,
+            AUDIO_I2S_GPIO_WS,
+            AUDIO_I2S_GPIO_DIN,
+            AUDIO_CODEC_ES7210_ADDR,
+            AUDIO_INPUT_REFERENCE);
+        return &audio_codec;
+#endif
+#else
+#error "Unknown Cube audio variant"
         return nullptr;
 #endif
     }
