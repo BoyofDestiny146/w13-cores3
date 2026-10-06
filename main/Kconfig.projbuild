@@ -1161,4 +1161,40 @@ menu "TAIJIPAI_S3_CONFIG"
         启动双声道
 endmenu
 
+menu "Cube V1.0 Audio Variant"
+    depends on BOARD_TYPE_M5STACK_CORE_S3
+    choice CUBE_AUDIO_VARIANT
+        prompt "Cube V1.0 audio profile"
+        default CUBE_AUDIO_VARIANT_EXTERNAL
+        help
+            Shared CoreS3 board (display/touch/camera/PMIC/Nexus/UI). Only the
+            audio codec path changes. BOARD_TYPE stays m5stack-core-s3.
+
+        config CUBE_AUDIO_VARIANT_EXTERNAL
+            bool "External Audio (M144 ES8388 Config B)"
+            help
+                Mic in + speaker out via M5Stack M144 / Module-Audio ES8388.
+                Config B pins: MCLK=GPIO7, BCLK=GPIO0, WS=GPIO6, DOUT=13, DIN=14.
+                ES8388=0x10, STM32=0x33, LINE/MIC jack routing enabled.
+
+        config CUBE_AUDIO_VARIANT_INTERNAL_MIC
+            bool "Internal Mic + Dedicated Speaker"
+            help
+                Mic: CoreS3 built-in ES7210 (stock MCLK=GPIO0 path).
+                Speaker: dedicated attachment — do NOT reuse M144 Config B
+                (GPIO0 conflicts with ES7210 MCLK). Speaker GPIOs require
+                hardware validation before production enablement.
+    endchoice
+
+    config CUBE_INTERNAL_SPEAKER_BENCH_AW88298
+        bool "Temporary bench: use stock CoreS3 AW88298 speaker"
+        depends on CUBE_AUDIO_VARIANT_INTERNAL_MIC
+        default n
+        help
+            TEMPORARY BENCH MODE ONLY. Enables the onboard AW88298 amp so the
+            internal-mic variant can be exercised on stock CoreS3 hardware.
+            This is NOT the final Cube V1.0 production speaker path. Leave
+            disabled for the compile-safe dedicated-speaker stub.
+endmenu
+
 endmenu

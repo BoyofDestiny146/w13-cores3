@@ -2,8 +2,17 @@
 #define _BOARD_CONFIG_H_
 
 // M5Stack CoreS3 Board configuration
+// Cube V1.0 product; BOARD_TYPE remains m5stack-core-s3 for Nexus/CareConnect.
 
 #include <driver/gpio.h>
+#include "sdkconfig.h"
+
+// Compile-time Cube audio variant aliases (from Kconfig choice).
+#if CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC
+#define CUBE_AUDIO_VARIANT_INTERNAL_MIC 1
+#else
+#define CUBE_AUDIO_VARIANT_EXTERNAL 1
+#endif
 
 #define AUDIO_INPUT_REFERENCE    false
 #define AUDIO_INPUT_SAMPLE_RATE  24000

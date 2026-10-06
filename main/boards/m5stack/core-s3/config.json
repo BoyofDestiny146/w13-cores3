@@ -4,7 +4,7 @@
     "target": "esp32s3",
     "builds": [
         {
-            "name": "m5stack-core-s3",
+            "name": "m5stack-core-s3-cube-external",
             "build_options": {
                 "camera_hmirror": false,
                 "camera_vflip": false
@@ -15,7 +15,24 @@
                 "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
                 "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
                 "CONFIG_OTA_URL=\"https://ota.nexus.warehouse-13.biz/xiaozhi/ota/\"",
-                "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y"
+                "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y",
+                "CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL=y"
+            ]
+        },
+        {
+            "name": "m5stack-core-s3-cube-internal",
+            "build_options": {
+                "camera_hmirror": false,
+                "camera_vflip": false
+            },
+            "sdkconfig_append": [
+                "CONFIG_SPIRAM_MODE_QUAD=y",
+                "CONFIG_CAMERA_GC0308=y",
+                "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
+                "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
+                "CONFIG_OTA_URL=\"https://ota.nexus.warehouse-13.biz/xiaozhi/ota/\"",
+                "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y",
+                "CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC=y"
             ]
         }
     ]
