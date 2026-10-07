@@ -45,7 +45,12 @@ Es8388AudioCodec::Es8388AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port,
     es8388_cfg.ctrl_if = ctrl_if_;
     es8388_cfg.gpio_if = gpio_if_;
     es8388_cfg.codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH;
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    // M144 EXTERNAL: ES8388 follows ESP32 I2S clocks (official Module-Audio).
+    es8388_cfg.master_mode = false;
+#else
     es8388_cfg.master_mode = true;
+#endif
     es8388_cfg.pa_pin = pa_pin;
     es8388_cfg.pa_reverted = false;
     es8388_cfg.hw_gain.pa_voltage = 5.0;
@@ -71,6 +76,9 @@ Es8388AudioCodec::Es8388AudioCodec(void* i2c_master_handle, i2c_port_t i2c_port,
     esp_codec_set_disable_when_closed(output_dev_, false);
     esp_codec_set_disable_when_closed(input_dev_, false);
     ESP_LOGI(TAG, "Es8388AudioCodec initialized");
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    ESP_LOGI(TAG, "M144 ES8388 clock role: codec SLAVE, ESP32 I2S MASTER");
+#endif
 }
 
 Es8388AudioCodec::~Es8388AudioCodec() {
