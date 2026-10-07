@@ -24,7 +24,8 @@
 namespace {
 
 // Cube V1.0 Variant A — External Audio (M144 ES8388 Config B).
-// Keep Es8388 duplex playback; after ADC open, force LIN1 per M5Module-Audio.
+// Keep Es8388 duplex playback; after ADC open, force LIN2 per official
+// M5Module-Audio i2sloopback (setADCInput(ADC_INPUT_LINPUT2_RINPUT2)).
 class M144Es8388AudioCodec : public Es8388AudioCodec {
 public:
     using Es8388AudioCodec::Es8388AudioCodec;
@@ -32,7 +33,7 @@ public:
     void EnableInput(bool enable) override {
         Es8388AudioCodec::EnableInput(enable);
         if (enable) {
-            SelectMicInputLin1();
+            SelectMicInputLin2();
         }
     }
 };
@@ -395,7 +396,7 @@ public:
         InitializeAw9523();
         I2cDetect();
 #if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
-        // Variant A: Route M144 LINE/MIC jack to ES8388 LIN1 (disable headset mic path).
+        // Variant A: Route M144 LINE/MIC jack OPEN (0x00=1); ADC LIN2 selected later.
         M144EnableLineMicPath(i2c_bus_);
 #endif
         InitializeSpi();

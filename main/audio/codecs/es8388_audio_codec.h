@@ -40,6 +40,10 @@ public:
     // Select ES8388 ADC LIN1/RIN1, matching M5Module-Audio setMicInputLine(
     // ADC_INPUT_LINPUT1_RINPUT1). Safe to call after EnableInput(true).
     bool SelectMicInputLin1();
+
+    // Select ES8388 ADC LIN2/RIN2, matching M5Module-Audio setADCInput(
+    // ADC_INPUT_LINPUT2_RINPUT2). Safe to call after EnableInput(true).
+    bool SelectMicInputLin2();
 };
 
 #endif // _ES8388_AUDIO_CODEC_H

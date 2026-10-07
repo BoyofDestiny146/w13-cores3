@@ -49,26 +49,30 @@ bool M144EnableLineMicPath(i2c_master_bus_handle_t i2c_bus) {
 
     M144Stm32Device stm32(i2c_bus);
 
-    // Official Module-Audio LINE/MIC jack recipe (README.md):
-    //   setHPMICStatus(AUDIO_MIC_CLOSE);  // reg 0x11 = 0
-    //   setMICStatus(AUDIO_MIC_OPEN);     // reg 0x00 = 1
-    // Paths share ES8388 LIN1 and must stay mutually exclusive.
+    // Keep MICROPHONE_STATUS OPEN (0x00=1). Still attempt HEADPHONE_MIC CLOSE
+    // (0x11=0) and log sticky readback, but do not gate the audio path on 0x11.
     stm32.WriteReg(kRegHeadphoneMicStatus, kAudioMicClose);
     stm32.WriteReg(kRegMicrophoneStatus, kAudioMicOpen);
 
     const uint8_t hp_mic = stm32.ReadReg(kRegHeadphoneMicStatus);
     const uint8_t line_mic = stm32.ReadReg(kRegMicrophoneStatus);
-    if (hp_mic != kAudioMicClose || line_mic != kAudioMicOpen) {
+    if (line_mic != kAudioMicOpen) {
         ESP_LOGE(TAG,
-                 "LINE/MIC route FAILED: readback hp_mic(0x11)=%u line_mic(0x00)=%u "
-                 "(want hp_mic=0 line_mic=1)",
-                 hp_mic, line_mic);
+                 "LINE/MIC route FAILED: readback line_mic(0x00)=%u (want 1); "
+                 "hp_mic(0x11)=%u",
+                 line_mic, hp_mic);
         return false;
+    }
+    if (hp_mic != kAudioMicClose) {
+        ESP_LOGW(TAG,
+                 "HEADPHONE_MIC_STATUS anomaly: 0x11=%u after CLOSE write "
+                 "(want 0); continuing without gating mic path",
+                 hp_mic);
     }
 
     ESP_LOGI(TAG,
-             "LINE/MIC route enabled: STM32 0x11=%u (headset mic CLOSE), "
+             "LINE/MIC route enabled: STM32 0x11=%u (headset mic CLOSE attempt), "
              "0x00=%u (LINE/MIC OPEN)",
-             kAudioMicClose, kAudioMicOpen);
+             hp_mic, line_mic);
     return true;
 }
