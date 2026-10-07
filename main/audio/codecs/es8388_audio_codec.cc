@@ -1,6 +1,9 @@
 #include "es8388_audio_codec.h"
 
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <climits>
+#include <cstdint>
 
 #define TAG "Es8388AudioCodec"
 
@@ -287,6 +290,55 @@ void Es8388AudioCodec::EnableOutput(bool enable) {
 int Es8388AudioCodec::Read(int16_t* dest, int samples) {
     if (input_enabled_) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_codec_dev_read(input_dev_, (void*)dest, samples * sizeof(int16_t)));
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // M144PcmDiag: observe-only RAW PCM after I2S/codec RX, before AudioService
+        // resample and before AFE/VAD/WakeNet. Does not alter dest[].
+        if (dest != nullptr && samples > 0) {
+            static TickType_t win_start = 0;
+            static int64_t win_n = 0;
+            static int16_t win_min = INT16_MAX;
+            static int16_t win_max = INT16_MIN;
+            static int32_t win_peak = 0;
+            static int64_t win_sum_abs = 0;
+
+            if (win_start == 0) {
+                win_start = xTaskGetTickCount();
+            }
+            for (int i = 0; i < samples; ++i) {
+                const int16_t s = dest[i];
+                if (s < win_min) {
+                    win_min = s;
+                }
+                if (s > win_max) {
+                    win_max = s;
+                }
+                const int32_t a = (s < 0) ? -static_cast<int32_t>(s) : static_cast<int32_t>(s);
+                if (a > win_peak) {
+                    win_peak = a;
+                }
+                win_sum_abs += a;
+            }
+            win_n += samples;
+
+            const TickType_t now = xTaskGetTickCount();
+            if ((now - win_start) >= pdMS_TO_TICKS(1000) && win_n > 0) {
+                const int32_t mean_abs = static_cast<int32_t>(win_sum_abs / win_n);
+                ESP_LOGI("M144PcmDiag",
+                         "RAW PCM n=%lld min=%d max=%d peak_abs=%ld mean_abs=%ld "
+                         "rate=%dHz ch=%d bits=16 signed",
+                         static_cast<long long>(win_n), static_cast<int>(win_min),
+                         static_cast<int>(win_max), static_cast<long>(win_peak),
+                         static_cast<long>(mean_abs), input_sample_rate_,
+                         input_channels_);
+                win_start = now;
+                win_n = 0;
+                win_min = INT16_MAX;
+                win_max = INT16_MIN;
+                win_peak = 0;
+                win_sum_abs = 0;
+            }
+        }
+#endif  // CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
     }
     return samples;
 }
