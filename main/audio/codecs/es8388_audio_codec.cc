@@ -219,6 +219,23 @@ bool Es8388AudioCodec::SelectMicInputLin2() {
              "M144 external microphone ADC selected: LIN2/RIN2 "
              "(ADCCONTROL2=0x%02X ADCCONTROL3=0x%02X PGA/ADCCONTROL1=0x%02X unchanged)",
              verify2, verify3, pga);
+
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    // Official M5Module-Audio setADCInput(LIN2) wants ADCCONTROL3 exactly 0x80.
+    // esp_codec_dev open leaves bit1 (0x02) → prior bench readback 0x82; force exact.
+    adc3 = 0x80;
+    if (ctrl_if_->write_reg(ctrl_if_, 0x0b, 1, &adc3, 1) != 0) {
+        ESP_LOGE(TAG, "SelectMicInputLin2: failed to force ADCCONTROL3=0x80");
+        return false;
+    }
+    verify2 = 0;
+    verify3 = 0;
+    ctrl_if_->read_reg(ctrl_if_, 0x0a, 1, &verify2, 1);
+    ctrl_if_->read_reg(ctrl_if_, 0x0b, 1, &verify3, 1);
+    ESP_LOGI(TAG,
+             "M144 LIN2 ADC exact official config: ADCCONTROL2=0x%02X ADCCONTROL3=0x%02X",
+             verify2, verify3);
+#endif
     return true;
 }
 
