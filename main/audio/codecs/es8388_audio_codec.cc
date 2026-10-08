@@ -410,6 +410,30 @@ int Es8388AudioCodec::Read(int16_t* dest, int samples) {
 }
 
 int Es8388AudioCodec::Write(const int16_t* data, int samples) {
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    // TtsPathProbe: observe-only Write stats (no sample dump). Rate-limit first N + ~1s.
+    {
+        static uint32_t call_count = 0;
+        static int64_t cum_samples = 0;
+        static TickType_t last_log = 0;
+        ++call_count;
+        if (samples > 0) {
+            cum_samples += samples;
+        }
+        const TickType_t now = xTaskGetTickCount();
+        if (call_count <= 16 || last_log == 0 ||
+            (now - last_log) >= pdMS_TO_TICKS(1000)) {
+            const int bytes =
+                samples > 0 ? samples * static_cast<int>(sizeof(int16_t)) : 0;
+            ESP_LOGI("TtsPathProbe",
+                     "Write calls=%lu samples=%d bytes=%d output_enabled_=%d "
+                     "cum_samples=%lld",
+                     static_cast<unsigned long>(call_count), samples, bytes,
+                     output_enabled_ ? 1 : 0, static_cast<long long>(cum_samples));
+            last_log = now;
+        }
+    }
+#endif
     if (output_enabled_ && output_dev_ && data != nullptr) {
 #if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
         // Duplicate mono app/TTS into L and R for stereo Philips TX.

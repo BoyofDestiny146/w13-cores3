@@ -722,9 +722,51 @@ void Application::InitializeProtocol() {
     });
 
     protocol_->OnIncomingAudio([this](std::unique_ptr<AudioStreamPacket> packet) {
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // TtsPathProbe: observe-only binary ingress + Speaking gate (no sample dump).
+        static uint32_t pkt_count = 0;
+        static uint64_t byte_count = 0;
+        static uint32_t queued = 0;
+        static uint32_t dropped = 0;
+        static uint32_t since_log = 0;
+        static TickType_t last_log = 0;
+
+        const size_t nbytes = packet ? packet->payload.size() : 0;
+        ++pkt_count;
+        byte_count += nbytes;
+        ++since_log;
+
+        const DeviceState st = GetDeviceState();
+        const bool speaking = (st == kDeviceStateSpeaking);
+        const char* disposition = speaking ? "queued" : "dropped_not_speaking";
+        if (speaking) {
+            ++queued;
+            audio_service_.PushPacketToDecodeQueue(std::move(packet));
+        } else {
+            ++dropped;
+        }
+
+        const TickType_t now = xTaskGetTickCount();
+        if (pkt_count <= 16 || last_log == 0 ||
+            (now - last_log) >= pdMS_TO_TICKS(1000)) {
+            ESP_LOGI("TtsPathProbe",
+                     "binary pkts=%lu bytes=%llu this=%u %s device_state=%s "
+                     "queued=%lu dropped=%lu since_log=%lu",
+                     static_cast<unsigned long>(pkt_count),
+                     static_cast<unsigned long long>(byte_count),
+                     static_cast<unsigned>(nbytes), disposition,
+                     DeviceStateMachine::GetStateName(st),
+                     static_cast<unsigned long>(queued),
+                     static_cast<unsigned long>(dropped),
+                     static_cast<unsigned long>(since_log));
+            last_log = now;
+            since_log = 0;
+        }
+#else
         if (GetDeviceState() == kDeviceStateSpeaking) {
             audio_service_.PushPacketToDecodeQueue(std::move(packet));
         }
+#endif
     });
 
     protocol_->OnAudioChannelOpened([this, codec, &board]() {
@@ -753,6 +795,43 @@ void Application::InitializeProtocol() {
             ESP_LOGW(TAG, "Incoming JSON message has no type");
             return;
         }
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // TtsPathProbe: observe-only text ingress (tts/stt/llm). No tokens/credentials.
+        if (strcmp(type->valuestring, "tts") == 0 || strcmp(type->valuestring, "stt") == 0 ||
+            strcmp(type->valuestring, "llm") == 0) {
+            const char* tts_state = "-";
+            auto state_item = cJSON_GetObjectItem(root, "state");
+            if (cJSON_IsString(state_item) && state_item->valuestring != nullptr) {
+                tts_state = state_item->valuestring;
+            }
+            char snip[49] = {0};
+            int text_len = 0;
+            auto text_item = cJSON_GetObjectItem(root, "text");
+            if (cJSON_IsString(text_item) && text_item->valuestring != nullptr) {
+                text_len = static_cast<int>(strlen(text_item->valuestring));
+                // Short printable snippet only — never log tokens/credentials.
+                size_t copy_n = text_len > 48 ? 48 : static_cast<size_t>(text_len);
+                memcpy(snip, text_item->valuestring, copy_n);
+                snip[copy_n] = '\0';
+                for (size_t i = 0; i < copy_n; ++i) {
+                    const unsigned char c = static_cast<unsigned char>(snip[i]);
+                    if (c < 0x20 || c == 0x7f) {
+                        snip[i] = '.';
+                    }
+                }
+            }
+            const char* emotion = "-";
+            auto emotion_item = cJSON_GetObjectItem(root, "emotion");
+            if (cJSON_IsString(emotion_item) && emotion_item->valuestring != nullptr) {
+                emotion = emotion_item->valuestring;
+            }
+            ESP_LOGI("TtsPathProbe",
+                     "json type=%s tts.state=%s text_len=%d snip=\"%s\" emotion=%s "
+                     "device_state=%s",
+                     type->valuestring, tts_state, text_len, snip, emotion,
+                     DeviceStateMachine::GetStateName(GetDeviceState()));
+        }
+#endif
         if (strcmp(type->valuestring, "notify") == 0) {
             auto audio_url = cJSON_GetObjectItem(root, "audio_url");
             if (!cJSON_IsString(audio_url) || audio_url->valuestring[0] == '\0') {

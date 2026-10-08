@@ -129,6 +129,15 @@ bool DeviceStateMachine::TransitionTo(DeviceState new_state) {
     current_state_.store(new_state);
     ESP_LOGI(TAG, "State: %s -> %s",
              GetStateName(old_state), GetStateName(new_state));
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    // TtsPathProbe: highlight Listening / Speaking / Idle edges for TTS path.
+    if (old_state == kDeviceStateListening || old_state == kDeviceStateSpeaking ||
+        old_state == kDeviceStateIdle || new_state == kDeviceStateListening ||
+        new_state == kDeviceStateSpeaking || new_state == kDeviceStateIdle) {
+        ESP_LOGI("TtsPathProbe", "state %s -> %s", GetStateName(old_state),
+                 GetStateName(new_state));
+    }
+#endif
 
     // Notify callback
     NotifyStateChange(old_state, new_state);
