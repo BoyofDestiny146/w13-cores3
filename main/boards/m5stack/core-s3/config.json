@@ -34,6 +34,7 @@
                 "CONFIG_OTA_URL=\"https://ota.nexus.warehouse-13.biz/xiaozhi/ota/\"",
                 "CONFIG_W13_NEXUS_WEBSOCKET_TRANSPORT=y",
                 "CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC=y",
+                "CONFIG_CUBE_INTERNAL_SPEAKER_BENCH_AW88298=y",
                 "CONFIG_LANGUAGE_EN_US=y"
             ]
         }
