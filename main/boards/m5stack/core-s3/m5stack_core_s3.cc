@@ -3,6 +3,7 @@
 #include "cube_internal_audio_codec.h"
 #include "codecs/es8388_audio_codec.h"
 #include "m144_linemic_route.h"
+#include "m144_es7210_isolation.h"
 #include "cores3_v4_display.h"
 #include "application.h"
 #include "config.h"
@@ -10,6 +11,7 @@
 #include "i2c_device.h"
 #include "axp2101.h"
 
+#include <cstring>
 #include <esp_log.h>
 #include <driver/i2c_master.h>
 #include <esp_lcd_panel_io.h>
@@ -26,6 +28,7 @@ namespace {
 // Cube V1.0 Variant A — External Audio (M144 ES8388 Config B).
 // Keep Es8388 duplex playback; after ADC open, force LIN2 per official
 // M5Module-Audio i2sloopback (setADCInput(ADC_INPUT_LINPUT2_RINPUT2)).
+// Never constructs CoreS3AudioCodec / ES7210 / AW88298.
 class M144Es8388AudioCodec : public Es8388AudioCodec {
 public:
     using Es8388AudioCodec::Es8388AudioCodec;
@@ -35,6 +38,52 @@ public:
         if (enable) {
             SelectMicInputLin2();
         }
+    }
+};
+
+// Fail-safe stub when ES7210 SDOUT1 Hi-Z is not confirmed: no I2S GPIO claim,
+// silence in / discard out — prevents GPIO14 dual-driver contention.
+class M144FailSafeAudioCodec : public AudioCodec {
+public:
+    M144FailSafeAudioCodec(int input_sample_rate, int output_sample_rate) {
+        duplex_ = true;
+        input_reference_ = false;
+        input_channels_ = 1;
+        output_channels_ = 1;
+        input_sample_rate_ = input_sample_rate;
+        output_sample_rate_ = output_sample_rate;
+        ESP_LOGE(TAG,
+                 "M144FailSafeAudioCodec active — EXTERNAL I2S/ES8388 withheld "
+                 "(isolation not confirmed)");
+    }
+
+    void SetOutputVolume(int volume) override { AudioCodec::SetOutputVolume(volume); }
+
+    void EnableInput(bool enable) override {
+        if (enable) {
+            ESP_LOGE(TAG, "fail-safe: EnableInput ignored (no GPIO14 claim)");
+        }
+        AudioCodec::EnableInput(enable);
+    }
+
+    void EnableOutput(bool enable) override {
+        if (enable) {
+            ESP_LOGE(TAG, "fail-safe: EnableOutput ignored (no ES8388 path)");
+        }
+        AudioCodec::EnableOutput(enable);
+    }
+
+protected:
+    int Read(int16_t* dest, int samples) override {
+        if (dest != nullptr && samples > 0) {
+            std::memset(dest, 0, static_cast<size_t>(samples) * sizeof(int16_t));
+        }
+        return samples;
+    }
+
+    int Write(const int16_t* data, int samples) override {
+        (void)data;
+        return samples;
     }
 };
 
@@ -78,10 +127,16 @@ private:
 
 class Aw9523 : public I2cDevice {
 public:
-    // Exanpd IO Init
+    // Expand IO Init
     Aw9523(i2c_master_bus_handle_t i2c_bus, uint8_t addr) : I2cDevice(i2c_bus, addr) {
-        WriteReg(0x02, 0b00000111);  // P0
-        WriteReg(0x03, 0b10001111);  // P1
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // EXTERNAL: hold AW88298 AW_RST (P0.2) LOW for the session.
+        // Keep TOUCH_RST (P0.0) + BUS_OUT_EN (P0.1) high for touch / M-BUS 5V gate.
+        WriteReg(0x02, 0b00000011);  // P0: AW_RST=0
+#else
+        WriteReg(0x02, 0b00000111);  // P0: stock — AW_RST released
+#endif
+        WriteReg(0x03, 0b10001111);  // P1: includes BOOST_EN (P1.7)
         WriteReg(0x04, 0b00011000);  // CONFIG_P0
         WriteReg(0x05, 0b00001100);  // CONFIG_P1
         WriteReg(0x11, 0b00010000);  // GCR P0 port is Push-Pull mode.
@@ -90,12 +145,26 @@ public:
     }
 
     void ResetAw88298() {
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+        // EXTERNAL must never release AW_RST — Class-D stays in hardware power-down.
+        ESP_LOGW(TAG, "ResetAw88298 ignored on EXTERNAL (AW_RST held low)");
+        WriteReg(0x02, 0b00000011);
+#else
         ESP_LOGI(TAG, "Reset AW88298");
         WriteReg(0x02, 0b00000011);
         vTaskDelay(pdMS_TO_TICKS(10));
         WriteReg(0x02, 0b00000111);
         vTaskDelay(pdMS_TO_TICKS(50));
+#endif
     }
+
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    uint8_t ReadPort0() { return ReadReg(0x02); }
+
+    void HoldAw88298InReset() {
+        WriteReg(0x02, 0b00000011);
+    }
+#endif
 
     void ResetIli9342() {
         ESP_LOGI(TAG, "Reset IlI9342");
@@ -150,6 +219,10 @@ private:
     EspVideo* camera_;
     esp_timer_handle_t touchpad_timer_;
     PowerSaveTimer* power_save_timer_;
+#if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
+    bool m144_isolation_ok_ = false;
+    bool m144_stm32_route_ok_ = false;
+#endif
 
     void InitializePowerSaveTimer() {
         power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
@@ -396,8 +469,40 @@ public:
         InitializeAw9523();
         I2cDetect();
 #if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
-        // Variant A: Route M144 LINE/MIC jack OPEN (0x00=1); ADC LIN2 selected later.
-        M144EnableLineMicPath(i2c_bus_);
+        // Step 2A/3A EXTERNAL startup order (before any I2S RX on GPIO14):
+        // I2C + AXP + AW9523(AW_RST low) → ES7210 Hi-Z → STM32 route → ES8388.
+        ESP_LOGI("M144ExtInit",
+                 "variant=EXTERNAL ConfigB MCLK=%d BCLK=%d WS=%d DOUT=%d DIN=%d "
+                 "I2C SDA=%d SCL=%d ES8388=0x10 STM32=0x33 rate_in=%d rate_out=%d",
+                 static_cast<int>(M144_AUDIO_I2S_GPIO_MCLK),
+                 static_cast<int>(M144_AUDIO_I2S_GPIO_BCLK),
+                 static_cast<int>(M144_AUDIO_I2S_GPIO_WS),
+                 static_cast<int>(M144_AUDIO_I2S_GPIO_DOUT),
+                 static_cast<int>(M144_AUDIO_I2S_GPIO_DIN),
+                 static_cast<int>(AUDIO_CODEC_I2C_SDA_PIN),
+                 static_cast<int>(AUDIO_CODEC_I2C_SCL_PIN), AUDIO_INPUT_SAMPLE_RATE,
+                 AUDIO_OUTPUT_SAMPLE_RATE);
+
+        aw9523_->HoldAw88298InReset();
+        const uint8_t port0 = aw9523_->ReadPort0();
+        const bool aw_rst_low = (port0 & 0b00000100) == 0;
+        ESP_LOGI("M144ExtInit", "AW_RST hold: Port0=0x%02X AW_RST_low=%d (P0.2 clear)", port0,
+                 aw_rst_low ? 1 : 0);
+        if (!aw_rst_low) {
+            ESP_LOGW("M144ExtInit", "AW_RST not low after hold — re-forcing P0.2=0");
+            aw9523_->HoldAw88298InReset();
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        m144_isolation_ok_ = Es7210ForceSdout1HiZ(i2c_bus_);
+        if (!m144_isolation_ok_) {
+            ESP_LOGE("M144ExtInit",
+                     "isolation FAIL — skipping STM32 route and ES8388 construction");
+        } else {
+            // Verified STM32 protocol only: 0x11=CLOSE, 0x00=OPEN (LINE/MIC).
+            m144_stm32_route_ok_ = M144EnableLineMicPath(i2c_bus_);
+            ESP_LOGI("M144ExtInit", "STM32 LINE/MIC routing ok=%d", m144_stm32_route_ok_ ? 1 : 0);
+        }
 #endif
         InitializeSpi();
         InitializeIli9342Display();
@@ -408,9 +513,14 @@ public:
 
     virtual AudioCodec* GetAudioCodec() override {
 #if CONFIG_CUBE_AUDIO_VARIANT_EXTERNAL
-        // Variant A — External Audio: M144 ES8388 Config B (unchanged).
+        // Variant A — External Audio: M144 ES8388 Config B as I2S slave.
         // MCLK=GPIO7, BCLK=GPIO0, WS=GPIO6, DOUT=13, DIN=14, ES8388=0x10.
-        // I2S_NUM_0 owned exclusively by Es8388AudioCodec (no ES7210/AW88298).
+        // I2S_NUM_0 owned exclusively by Es8388AudioCodec (never CoreS3AudioCodec).
+        if (!m144_isolation_ok_) {
+            static M144FailSafeAudioCodec fail_safe(AUDIO_INPUT_SAMPLE_RATE,
+                                                    AUDIO_OUTPUT_SAMPLE_RATE);
+            return &fail_safe;
+        }
         static M144Es8388AudioCodec audio_codec(
             i2c_bus_,
             I2C_NUM_1,
@@ -424,6 +534,14 @@ public:
             M144_AUDIO_PA_PIN,
             M144_AUDIO_CODEC_ADDR,
             false);
+        static bool logged_es8388 = false;
+        if (!logged_es8388) {
+            logged_es8388 = true;
+            ESP_LOGI("M144ExtInit",
+                     "ES8388 init path: slave mode ConfigB sample_rate=%d/%d stm32_route=%d",
+                     AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
+                     m144_stm32_route_ok_ ? 1 : 0);
+        }
         return &audio_codec;
 #elif CONFIG_CUBE_AUDIO_VARIANT_INTERNAL_MIC
 #if CONFIG_CUBE_INTERNAL_SPEAKER_BENCH_AW88298
